@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NML — NIS Media League</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Loading overlay -->
+  <div id="loading" class="loading-overlay">
+    <div class="loading-spinner"></div>
+    <p>Загрузка данных...</p>
+  </div>
+
+  <div class="app" id="app" style="display:none">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="header-content">
+        <div class="logo">
+          <div class="logo-icon">NML</div>
+          <div class="logo-text">
+            <h1>NIS Media League</h1>
+            <p>Школьная футбольная лига &bull; Сезон 2025/26</p>
+          </div>
+        </div>
+        <div class="admin-access">
+          <span id="adminBadge" class="admin-badge" hidden>ADMIN</span>
+          <div id="codeBox" class="code-box" hidden>
+            <input type="password" id="adminCode" placeholder="Код доступа" autocomplete="off">
+          </div>
+          <button id="lockBtn" class="lock-btn" title="Вход для администратора">🔒</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Stats bar -->
+    <div class="stats-bar">
+      <div class="stat-card">
+        <span class="stat-value" id="statTeams">16</span>
+        <span class="stat-label">Команд</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value" id="statPlayed">0</span>
+        <span class="stat-label">Матчей сыграно</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value" id="statGoals">0</span>
+        <span class="stat-label">Голов забито</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value" id="statRemaining">64</span>
+        <span class="stat-label">Матчей осталось</span>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="nav">
+      <button class="nav-btn active" data-tab="table">Таблица</button>
+      <button class="nav-btn" data-tab="matches">Матчи</button>
+      <button class="nav-btn" data-tab="playoff">Плей-офф</button>
+      <button class="nav-btn" data-tab="admin">Управление</button>
+    </nav>
+
+    <!-- Tabs -->
+    <div class="tab-content">
+
+      <!-- League Table -->
+      <section id="tab-table" class="tab active">
+        <div class="zone-legend">
+          <span class="zone-badge zone-playoff">Плей-офф (1-6)</span>
+          <span class="zone-badge zone-qual">Стыковые (7-10)</span>
+          <span class="zone-badge zone-out">Вне зоны (11-16)</span>
+        </div>
+        <div class="table-wrapper">
+          <table class="league-table">
+            <thead>
+              <tr>
+                <th class="col-pos">#</th>
+                <th class="col-team">Команда</th>
+                <th>P</th><th>W</th><th>D</th><th>L</th>
+                <th>GS</th><th>GC</th><th>GD</th>
+                <th class="col-pts">Pts</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Matches -->
+      <section id="tab-matches" class="tab">
+        <div id="matchdays"></div>
+      </section>
+
+      <!-- Playoff -->
+      <section id="tab-playoff" class="tab">
+        <div id="playoffContent"></div>
+      </section>
+
+      <!-- Admin -->
+      <section id="tab-admin" class="tab">
+        <div class="admin-grid">
+          <div class="admin-card">
+            <h3>Названия команд</h3>
+            <p class="hint">Измените названия и нажмите Enter или кликните вне поля</p>
+            <div id="teamList" class="team-list"></div>
+          </div>
+          <div class="admin-card">
+            <h3>Жеребьёвка</h3>
+            <p class="hint">Одинаковое число = одинаковое расписание. Генерация сбросит все результаты.</p>
+            <div class="seed-row">
+              <input type="number" id="seedInput" placeholder="Число для жеребьёвки">
+              <button id="generateBtn" class="btn-accent">Сгенерировать</button>
+            </div>
+          </div>
+          <div class="admin-card">
+            <h3>Импорт / Экспорт матчей</h3>
+            <p class="hint">Загрузите JSON с готовыми матчами или скачайте текущие.</p>
+            <div class="import-export-row">
+              <button id="exportMatchesBtn" class="btn-secondary">Скачать матчи</button>
+              <label class="btn-accent file-label">
+                Загрузить матчи
+                <input type="file" id="importMatchesFile" accept=".json" hidden>
+              </label>
+            </div>
+            <details class="import-hint-details">
+              <summary>Формат JSON</summary>
+              <pre class="import-hint-code">[
+  {
+    "home": "Команда А",
+    "away": "Команда Б",
+    "home_goals": 2,
+    "away_goals": 1,
+    "round": 1,
+    "match_type": "group"
+  }
+]</pre>
+            </details>
+          </div>
+          <div class="admin-card">
+            <h3>Импорт / Экспорт таблицы</h3>
+            <p class="hint">Загрузите JSON с готовой таблицей или скачайте текущую.</p>
+            <div class="import-export-row">
+              <button id="exportTableBtn" class="btn-secondary">Скачать таблицу</button>
+              <label class="btn-accent file-label">
+                Загрузить таблицу
+                <input type="file" id="importTableFile" accept=".json" hidden>
+              </label>
+            </div>
+            <div id="customTableBadge" class="custom-table-badge" hidden>
+              Используется загруженная таблица
+              <button id="clearCustomTable" class="btn-ghost btn-small">Сбросить</button>
+            </div>
+            <details class="import-hint-details">
+              <summary>Формат JSON</summary>
+              <pre class="import-hint-code">[
+  {
+    "name": "Команда А",
+    "p": 8, "w": 5, "d": 2, "l": 1,
+    "gs": 15, "gc": 8, "pts": 17
+  }
+]</pre>
+            </details>
+          </div>
+          <div class="admin-card">
+            <h3>Сброс данных</h3>
+            <p class="hint">Удалит все матчи и результаты. Команды останутся.</p>
+            <button id="resetBtn" class="btn-danger">Сбросить все матчи</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <footer class="footer">
+      NML — NIS Media League &bull; Данные хранятся в Supabase
+    </footer>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <h3 id="modalTitle">Результат матча</h3>
+      <div class="modal-match">
+        <div class="modal-team">
+          <span id="modalHomeName">-</span>
+          <input type="number" id="modalHomeGoals" min="0" value="0">
+        </div>
+        <span class="modal-vs">:</span>
+        <div class="modal-team">
+          <input type="number" id="modalAwayGoals" min="0" value="0">
+          <span id="modalAwayName">-</span>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="modalSave" class="btn-accent">Сохранить</button>
+        <button id="modalClear" class="btn-secondary">Очистить</button>
+        <button id="modalCancel" class="btn-ghost">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- Supabase JS v2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
