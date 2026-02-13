@@ -55,6 +55,10 @@
       padding: 16px;
       backdrop-filter: blur(4px);
     }
+    /* display:flex выше перебивает атрибут hidden — фиксим явно */
+    .modal-overlay-team[hidden] { display: none !important; }
+    /* То же самое для основной модалки матча */
+    .modal-overlay[hidden] { display: none !important; }
     .team-modal-box {
       background: var(--bg-card, #1a1a2e);
       border-radius: 16px;
