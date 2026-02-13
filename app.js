@@ -346,7 +346,20 @@
     // Show/hide custom table badge
     const badge = document.getElementById('customTableBadge');
     if (badge) badge.hidden = !customTable;
+    fillTeamSelects();
   }
+
+  function fillTeamSelects() {
+  const h = document.getElementById('manualHome');
+  const a = document.getElementById('manualAway');
+  if (!h || !a) return;
+
+  h.innerHTML = a.innerHTML = '';
+  teams.forEach(t => {
+    h.innerHTML += `<option value="${t.id}">${esc(t.name)}</option>`;
+    a.innerHTML += `<option value="${t.id}">${esc(t.name)}</option>`;
+  });
+}
 
   /* =========================================================
      ACTIONS — Supabase writes
@@ -359,6 +372,40 @@
     if (error) { toast('Ошибка сохранения'); console.error(error); return; }
     await loadAll();
   }
+  async function addManualMatch() {
+  const home_id = +document.getElementById('manualHome').value;
+  const away_id = +document.getElementById('manualAway').value;
+  const hg = parseInt(document.getElementById('manualHomeGoals').value);
+  const ag = parseInt(document.getElementById('manualAwayGoals').value);
+
+  if (home_id === away_id) {
+    toast('Команды должны быть разными');
+    return;
+  }
+
+  const played = Number.isInteger(hg) && Number.isInteger(ag);
+
+  const { error } = await db.from('matches').insert([{
+    match_type: 'group',
+    slot: null,
+    round: null,
+    home_id,
+    away_id,
+    home_goals: played ? hg : null,
+    away_goals: played ? ag : null,
+    played
+  }]);
+
+  if (error) {
+    toast('Ошибка добавления матча');
+    console.error(error);
+    return;
+  }
+
+  await loadAll();
+  toast('Матч добавлен');
+}
+
 
   /* --- Generate schedule --- */
   function seededRng(seed) {
@@ -587,37 +634,59 @@
   }
 
   /* --- Import standings table from JSON --- */
-  async function importTable(file) {
-    let data;
-    try {
-      data = JSON.parse(await file.text());
-    } catch { toast('Ошибка чтения JSON'); return; }
+async function importTable(file) {
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch {
+    toast('Ошибка чтения JSON');
+    return;
+  }
 
-    if (!Array.isArray(data) || !data.length) { toast('Файл пуст или неверный формат'); return; }
+  if (!Array.isArray(data) || !data.length) {
+    toast('Файл пуст или неверный формат');
+    return;
+  }
 
-    // Validate structure
-    const required = ['name', 'p', 'w', 'd', 'l', 'gs', 'gc', 'pts'];
-    const valid = data.every(r => required.every(k => r[k] != null));
-    if (!valid) {
-      toast('Неверный формат. Нужны поля: ' + required.join(', '));
-      return;
-    }
+  // name → team
+  const teamMap = {};
+  teams.forEach(t => {
+    teamMap[t.name.toLowerCase()] = t.name;
+  });
 
-    // Sort by pts desc, then gd, then gs
-    customTable = data.map(r => ({
-      name: r.name,
+  const missing = [];
+  customTable = data.map(r => {
+    const realName = teamMap[r.name.toLowerCase()];
+    if (!realName) missing.push(r.name);
+
+    return {
+      name: realName || r.name,
       p: r.p, w: r.w, d: r.d, l: r.l,
       gs: r.gs, gc: r.gc,
       gd: r.gd != null ? r.gd : r.gs - r.gc,
       pts: r.pts,
-    })).sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gs - a.gs || a.name.localeCompare(b.name));
+    };
+  });
 
-    // Save to settings so it persists
-    await db.from('settings').upsert({ key: 'custom_table', value: JSON.stringify(customTable) });
-
-    render();
-    toast('Таблица загружена (' + customTable.length + ' команд)');
+  if (missing.length) {
+    toast('Не найдены команды: ' + missing.join(', '));
+    customTable = null;
+    return;
   }
+
+  customTable.sort(
+    (a, b) => b.pts - a.pts || b.gd - a.gd || b.gs - a.gs || a.name.localeCompare(b.name)
+  );
+
+  await db.from('settings').upsert({
+    key: 'custom_table',
+    value: JSON.stringify(customTable),
+  });
+
+  render();
+  toast('Таблица загружена с реальными названиями');
+}
+
 
   /* --- Clear custom table --- */
   async function clearCustomTable() {
@@ -805,6 +874,8 @@
   function initAdmin() {
     document.getElementById('generateBtn').addEventListener('click', generateSchedule);
     document.getElementById('resetBtn').addEventListener('click', resetData);
+    document.getElementById('addMatchBtn') ?.addEventListener('click', addManualMatch);
+
 
     // Import / Export
     document.getElementById('exportMatchesBtn').addEventListener('click', exportMatches);
