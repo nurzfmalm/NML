@@ -43,29 +43,33 @@
     initAuth();
     initTeamModal();
     applyAdminMode();
-    await loadAll();
-    subscribeRealtime();
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('app').style.display = '';
+    try {
+      await loadAll();
+      subscribeRealtime();
+    } catch (e) {
+      console.error('Bootstrap error', e);
+      toast('Ошибка загрузки — проверьте консоль');
+    } finally {
+      // Всегда показываем приложение, даже если что-то упало
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('app').style.display = '';
+    }
   });
 
   /* =========================================================
      DATA — load everything from Supabase
      ========================================================= */
   async function loadAll() {
-    const [tRes, mRes, sRes, pRes, gRes] = await Promise.all([
+    // 1. Обязательные таблицы — без них смысла нет
+    const [tRes, mRes, sRes] = await Promise.all([
       db.from('teams').select('*').order('sort_order'),
       db.from('matches').select('*').order('id'),
       db.from('settings').select('*'),
-      db.from('players').select('*').order('sort_order').order('id'),
-      db.from('goals').select('*').order('id'),
     ]);
 
     if (tRes.error || mRes.error || sRes.error) {
       console.error('Load error', tRes.error, mRes.error, sRes.error);
       toast('Ошибка загрузки данных');
-      document.getElementById('loading').style.display = 'none';
-      document.getElementById('app').style.display = '';
       return;
     }
 
@@ -74,9 +78,15 @@
     settings = {};
     (sRes.data || []).forEach(r => { settings[r.key] = r.value; });
 
-    // Players & Goals (graceful — tables may not exist yet)
-    players = pRes.error ? [] : (pRes.data || []);
-    goals   = gRes.error ? [] : (gRes.data || []);
+    // 2. Необязательные таблицы — падение не ломает сайт.
+    //    Если migration.sql ещё не запускали — просто пустые массивы.
+    players = await db.from('players').select('*').order('sort_order').order('id')
+      .then(r => r.error ? [] : (r.data || []))
+      .catch(() => []);
+
+    goals = await db.from('goals').select('*').order('id')
+      .then(r => r.error ? [] : (r.data || []))
+      .catch(() => []);
 
     // Restore custom table from settings
     if (settings.custom_table) {
@@ -98,12 +108,18 @@
   }
 
   function subscribeRealtime() {
-    db.channel('nml-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' },   scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, scheduleReload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'goals' },   scheduleReload)
-      .subscribe();
+    try {
+      db.channel('nml-live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, scheduleReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' },   scheduleReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, scheduleReload)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'goals' },   scheduleReload)
+        .subscribe(status => {
+          if (status === 'CHANNEL_ERROR') console.warn('Realtime error (non-fatal)');
+        });
+    } catch (e) {
+      console.warn('Realtime init failed (non-fatal):', e);
+    }
   }
 
   /* =========================================================
