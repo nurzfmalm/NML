@@ -10,389 +10,148 @@
   <link rel="stylesheet" href="styles.css">
   <style>
     /* ============================================================
-       ADDITIONS: Team Logos, Rosters, Goal Scorers, Players Tab
+       TEAM LOGOS & ROSTERS
        ============================================================ */
-
-    /* --- Team logo (small, in table/cards) --- */
-    .team-logo-sm {
-      width: 22px; height: 22px;
-      object-fit: contain;
-      border-radius: 4px;
-      margin-right: 7px;
-      vertical-align: middle;
-      flex-shrink: 0;
-    }
-    .team-logo-placeholder-sm {
-      display: inline-flex;
-      align-items: center; justify-content: center;
-      width: 22px; height: 22px;
-      border-radius: 4px;
-      background: rgba(255,255,255,.08);
-      font-size: 11px;
-      margin-right: 7px;
-      vertical-align: middle;
-      flex-shrink: 0;
-    }
-    .col-team {
-      cursor: pointer;
-    }
-    .col-team:hover .team-cell-name {
-      text-decoration: underline;
-      text-underline-offset: 3px;
-    }
-    .team-cell {
-      display: flex;
-      align-items: center;
-    }
-    .team-cell-name { flex: 1; }
+    .team-logo-sm { width:22px;height:22px;object-fit:contain;border-radius:4px;margin-right:7px;vertical-align:middle;flex-shrink:0; }
+    .team-logo-placeholder-sm { display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:4px;background:rgba(255,255,255,.08);font-size:11px;margin-right:7px;vertical-align:middle;flex-shrink:0; }
+    .col-team { cursor:pointer; }
+    .col-team:hover .team-cell-name { text-decoration:underline;text-underline-offset:3px; }
+    .team-cell { display:flex;align-items:center; }
+    .team-cell-name { flex:1; }
 
     /* --- Team Modal --- */
-    .modal-overlay-team {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,.72);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 200;
-      padding: 16px;
-      backdrop-filter: blur(4px);
-    }
-    /* display:flex выше перебивает атрибут hidden — фиксим явно */
-    .modal-overlay-team[hidden] { display: none !important; }
-    /* То же самое для основной модалки матча */
-    .modal-overlay[hidden] { display: none !important; }
-    .team-modal-box {
-      background: var(--bg-card, #1a1a2e);
-      border-radius: 16px;
-      width: 100%; max-width: 560px;
-      max-height: 85vh;
-      display: flex; flex-direction: column;
-      box-shadow: 0 32px 80px rgba(0,0,0,.6);
-      overflow: hidden;
-      border: 1px solid rgba(255,255,255,.08);
-    }
-    .team-modal-header {
-      display: flex; align-items: center; gap: 16px;
-      padding: 24px 24px 18px;
-      border-bottom: 1px solid rgba(255,255,255,.08);
-      position: relative;
-    }
-    .team-logo-wrap {
-      display: flex; flex-direction: column;
-      align-items: center; gap: 6px;
-      flex-shrink: 0;
-    }
-    .team-logo-lg {
-      width: 72px; height: 72px;
-      object-fit: contain;
-      border-radius: 10px;
-      background: rgba(255,255,255,.06);
-    }
-    .logo-placeholder-lg {
-      width: 72px; height: 72px;
-      border-radius: 10px;
-      background: rgba(255,255,255,.06);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 28px;
-      border: 2px dashed rgba(255,255,255,.15);
-    }
-    .logo-upload-btn {
-      font-size: 0.72rem;
-      padding: 3px 9px;
-      border-radius: 6px;
-      border: 1px solid rgba(255,255,255,.2);
-      background: transparent;
-      color: rgba(255,255,255,.6);
-      cursor: pointer;
-      white-space: nowrap;
-      display: none;
-      transition: all .15s;
-    }
-    .admin-mode .logo-upload-btn { display: inline-block; }
-    .logo-upload-btn:hover { background: rgba(255,255,255,.1); color: #fff; }
-    .team-modal-info { flex: 1; min-width: 0; }
-    .team-modal-info h3 { margin: 0 0 4px; font-size: 1.3rem; }
-    .team-modal-meta {
-      font-size: 0.82rem;
-      opacity: .6;
-      display: flex; flex-wrap: wrap; gap: 12px;
-      margin: 0;
-    }
-    .meta-item { white-space: nowrap; }
-    .team-modal-close {
-      position: absolute; right: 16px; top: 16px;
-      background: rgba(255,255,255,.08);
-      border: none; border-radius: 50%;
-      width: 32px; height: 32px;
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer; color: #fff; font-size: 1rem;
-      transition: background .15s;
-    }
-    .team-modal-close:hover { background: rgba(255,255,255,.16); }
-    .team-modal-body {
-      flex: 1; overflow-y: auto;
-      padding: 16px 24px 24px;
-    }
-    .roster-section-head {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 12px;
-    }
-    .roster-section-head h4 { margin: 0; font-size: 0.95rem; opacity: .7; text-transform: uppercase; letter-spacing: .06em; }
-    .btn-add-player {
-      font-size: 0.78rem; padding: 5px 12px;
-      border-radius: 8px;
-      background: var(--accent, #6c5ce7);
-      color: #fff; border: none; cursor: pointer;
-      display: none;
-      transition: opacity .15s;
-    }
-    .admin-mode .btn-add-player { display: inline-block; }
-    .btn-add-player:hover { opacity: .85; }
+    .modal-overlay-team { position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px;backdrop-filter:blur(4px); }
+    .modal-overlay-team[hidden] { display:none !important; }
+    .modal-overlay[hidden]      { display:none !important; }
+    .team-modal-box { background:var(--bg-card,#1a1a2e);border-radius:16px;width:100%;max-width:560px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.6);overflow:hidden;border:1px solid rgba(255,255,255,.08); }
+    .team-modal-header { display:flex;align-items:center;gap:16px;padding:24px 24px 18px;border-bottom:1px solid rgba(255,255,255,.08);position:relative; }
+    .team-logo-wrap { display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0; }
+    .team-logo-lg { width:72px;height:72px;object-fit:contain;border-radius:10px;background:rgba(255,255,255,.06); }
+    .logo-placeholder-lg { width:72px;height:72px;border-radius:10px;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;font-size:28px;border:2px dashed rgba(255,255,255,.15); }
+    .logo-upload-btn { font-size:.72rem;padding:3px 9px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:transparent;color:rgba(255,255,255,.6);cursor:pointer;white-space:nowrap;display:none;transition:all .15s; }
+    .admin-mode .logo-upload-btn { display:inline-block; }
+    .logo-upload-btn:hover { background:rgba(255,255,255,.1);color:#fff; }
+    .team-modal-info { flex:1;min-width:0; }
+    .team-modal-info h3 { margin:0 0 4px;font-size:1.3rem; }
+    .team-modal-meta { font-size:.82rem;opacity:.6;display:flex;flex-wrap:wrap;gap:12px;margin:0; }
+    .team-modal-close { position:absolute;right:16px;top:16px;background:rgba(255,255,255,.08);border:none;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;font-size:1rem;transition:background .15s; }
+    .team-modal-close:hover { background:rgba(255,255,255,.16); }
+    .team-modal-body { flex:1;overflow-y:auto;padding:16px 24px 24px; }
+    .roster-section-head { display:flex;align-items:center;justify-content:space-between;margin-bottom:12px; }
+    .roster-section-head h4 { margin:0;font-size:.95rem;opacity:.7;text-transform:uppercase;letter-spacing:.06em; }
+    .btn-add-player { font-size:.78rem;padding:5px 12px;border-radius:8px;background:var(--accent,#6c5ce7);color:#fff;border:none;cursor:pointer;display:none;transition:opacity .15s; }
+    .admin-mode .btn-add-player { display:inline-block; }
+    .btn-add-player:hover { opacity:.85; }
 
-    .add-player-form {
-      display: none;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-bottom: 12px;
-      background: rgba(255,255,255,.04);
-      padding: 12px;
-      border-radius: 10px;
-    }
-    .add-player-form.visible { display: flex; }
-    .add-player-form input {
-      padding: 7px 10px;
-      border-radius: 7px;
-      border: 1px solid rgba(255,255,255,.15);
-      background: rgba(255,255,255,.06);
-      color: #fff; font-size: 0.88rem;
-    }
-    .add-player-form input:focus { outline: none; border-color: var(--accent, #6c5ce7); }
-    .add-player-form .inp-num { width: 62px; }
-    .add-player-form .inp-name { flex: 1; min-width: 120px; }
-    .add-player-form .inp-rating { width: 72px; }
-    .add-player-form .form-btns { display: flex; gap: 6px; }
+    /* ── Add Player Form (no rating) ── */
+    .add-player-form { display:none;gap:8px;flex-wrap:wrap;margin-bottom:12px;background:rgba(255,255,255,.04);padding:12px;border-radius:10px; }
+    .add-player-form.visible { display:flex; }
+    .add-player-form input { padding:7px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#fff;font-size:.88rem; }
+    .add-player-form input:focus { outline:none;border-color:var(--accent,#6c5ce7); }
+    .add-player-form .inp-num  { width:62px; }
+    .add-player-form .inp-name { flex:1;min-width:110px; }
+    .add-player-form .form-btns { display:flex;gap:6px; }
 
-    .player-item {
-      display: flex; align-items: center; gap: 10px;
-      padding: 9px 12px;
-      border-radius: 9px;
-      background: rgba(255,255,255,.04);
-      margin-bottom: 5px;
-      transition: background .12s;
-    }
-    .player-item:hover { background: rgba(255,255,255,.07); }
-    .player-num {
-      font-weight: 700; font-size: 0.88rem;
-      min-width: 28px; text-align: center;
-      opacity: .5;
-    }
-    .player-name { flex: 1; font-weight: 500; font-size: 0.93rem; }
-    .player-goals-badge {
-      background: var(--accent, #6c5ce7);
-      color: #fff; padding: 2px 9px;
-      border-radius: 12px; font-size: 0.74rem; font-weight: 700;
-    }
-    .player-goals-badge.zero { background: rgba(255,255,255,.12); }
-    .player-rating {
-      font-size: 0.8rem; font-weight: 600;
-      background: rgba(255,255,255,.08);
-      padding: 2px 9px; border-radius: 10px;
-    }
-    .btn-remove-player {
-      background: none; border: none;
-      color: #ff6b6b; cursor: pointer;
-      font-size: 1rem; padding: 2px 4px;
-      border-radius: 4px;
-      display: none;
-      opacity: .7; transition: opacity .12s;
-    }
-    .admin-mode .btn-remove-player { display: inline; }
-    .btn-remove-player:hover { opacity: 1; }
-    .no-players-msg {
-      text-align: center; padding: 24px;
-      opacity: .4; font-size: 0.88rem;
-    }
+    /* ── Player Item ── */
+    .player-item { display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;background:rgba(255,255,255,.04);margin-bottom:5px;transition:background .12s; }
+    .player-item:hover { background:rgba(255,255,255,.07); }
+    .player-num  { font-weight:700;font-size:.88rem;min-width:28px;text-align:center;opacity:.5; }
+    .player-name { flex:1;font-weight:500;font-size:.93rem; }
+    .player-goals-badge      { background:var(--accent,#6c5ce7);color:#fff;padding:2px 9px;border-radius:12px;font-size:.74rem;font-weight:700; }
+    .player-goals-badge.zero { background:rgba(255,255,255,.12); }
+    .btn-remove-player { background:none;border:none;color:#ff6b6b;cursor:pointer;font-size:1rem;padding:2px 4px;border-radius:4px;display:none;opacity:.7;transition:opacity .12s; }
+    .admin-mode .btn-remove-player { display:inline; }
+    .btn-remove-player:hover { opacity:1; }
+    .no-players-msg { text-align:center;padding:24px;opacity:.4;font-size:.88rem; }
 
-    /* --- Goal Scorers in match modal --- */
-    .goal-scorers-panel {
-      margin-top: 16px;
-      border-top: 1px solid rgba(255,255,255,.1);
-      padding-top: 14px;
-    }
-    .gs-panel-head {
-      display: flex; align-items: center; gap: 8px;
-      margin-bottom: 12px; font-weight: 600; font-size: 0.9rem;
-    }
-    .gs-count-badge {
-      background: var(--accent, #6c5ce7);
-      color: #fff; padding: 2px 9px;
-      border-radius: 12px; font-size: 0.78rem; font-weight: 700;
-      min-width: 22px; text-align: center;
-    }
-    .gs-two-cols {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
-      margin-bottom: 10px;
-    }
-    @media (max-width: 440px) { .gs-two-cols { grid-template-columns: 1fr; } }
-    .gs-col-label {
-      font-size: 0.75rem; font-weight: 600; opacity: .6;
-      text-align: center; margin-bottom: 5px;
-      text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
-    }
-    .gs-player-btn {
-      display: block; width: 100%;
-      text-align: left;
-      padding: 5px 9px; margin-bottom: 3px;
-      background: rgba(255,255,255,.05);
-      border: 1px solid rgba(255,255,255,.1);
-      border-radius: 7px;
-      color: #fff; cursor: pointer; font-size: 0.8rem;
-      transition: all .12s;
-    }
-    .gs-player-btn:hover {
-      background: var(--accent, #6c5ce7);
-      border-color: var(--accent, #6c5ce7);
-    }
-    .gs-no-players {
-      text-align: center; font-size: 0.78rem;
-      opacity: .4; padding: 6px 0;
-    }
-    .goals-chips {
-      display: flex; flex-wrap: wrap; gap: 5px; min-height: 16px;
-    }
-    .goal-chip {
-      display: inline-flex; align-items: center; gap: 5px;
-      background: rgba(255,255,255,.09);
-      border-radius: 16px; padding: 4px 10px 4px 8px;
-      font-size: 0.78rem; line-height: 1.2;
-    }
-    .goal-chip-dot {
-      width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-    }
-    .goal-chip-remove {
-      background: none; border: none;
-      color: #ff6b6b; cursor: pointer;
-      padding: 0; font-size: 1rem; line-height: 1;
-      margin-left: 2px;
-    }
-    .gs-mismatch-warn {
-      font-size: 0.75rem; color: #fdcb6e;
-      margin-top: 7px; text-align: center;
-    }
+    /* ============================================================
+       MATCH MODAL — GOAL ENTRY (admin) & VIEW (non-admin)
+       ============================================================ */
 
-    /* --- Players Tab --- */
-    .players-page { padding: 0; }
-    .players-tab-header {
-      display: flex; align-items: center; justify-content: space-between;
-      flex-wrap: wrap; gap: 10px; margin-bottom: 20px;
-    }
-    .players-tab-header h2 { margin: 0; }
-    .team-filter-select {
-      padding: 8px 14px;
-      border-radius: 9px;
-      border: 1px solid rgba(255,255,255,.15);
-      background: rgba(255,255,255,.06);
-      color: #fff; font-size: 0.88rem; cursor: pointer;
-      min-width: 160px;
-    }
-    .team-filter-select:focus { outline: none; }
-    .team-filter-select option { background: #1a1a2e; }
+    /* Goal entry section */
+    .goal-entry-section { margin-top:16px;border-top:1px solid rgba(255,255,255,.1);padding-top:14px; }
+    .ge-header { font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;opacity:.55;margin-bottom:10px; }
+    .ge-form-row { display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:12px;padding:10px 12px;background:rgba(255,255,255,.04);border-radius:10px; }
+    .ge-minute { width:58px;padding:6px 8px;border-radius:7px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#fff;font-size:.85rem;text-align:center; }
+    .ge-minute:focus { outline:none;border-color:var(--accent,#d4a017); }
+    .ge-side-tabs { display:flex;gap:3px;flex-shrink:0; }
+    .ge-side-tab  { padding:5px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.05);color:rgba(255,255,255,.6);font-size:.78rem;cursor:pointer;font-weight:600;transition:all .15s;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+    .ge-side-tab.active { background:var(--accent,#d4a017);border-color:var(--accent,#d4a017);color:#0a0e1a; }
+    .ge-select  { padding:6px 8px;border-radius:7px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#fff;font-size:.8rem;cursor:pointer;flex:1;min-width:100px; }
+    .ge-select:focus { outline:none;border-color:var(--accent,#d4a017); }
+    .ge-select option { background:#1a1a2e; }
+    .ge-og-label { display:flex;align-items:center;gap:5px;font-size:.8rem;cursor:pointer;padding:5px 9px;border-radius:7px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);white-space:nowrap;color:rgba(255,255,255,.7);transition:all .15s; }
+    .ge-og-label:hover { background:rgba(255,118,117,.1);border-color:rgba(255,118,117,.3);color:#ff7675; }
 
-    .scorers-section-title {
-      font-size: 0.75rem; font-weight: 700;
-      text-transform: uppercase; letter-spacing: .08em;
-      opacity: .5; margin: 20px 0 10px;
-    }
-    .scorers-list {
-      display: flex; flex-direction: column; gap: 4px;
-    }
-    .scorer-row {
-      display: flex; align-items: center; gap: 12px;
-      padding: 11px 14px; border-radius: 10px;
-      background: rgba(255,255,255,.04);
-      transition: background .12s;
-    }
-    .scorer-row:hover { background: rgba(255,255,255,.07); }
-    .scorer-rank {
-      font-weight: 800; font-size: 0.95rem;
-      min-width: 28px; text-align: center; opacity: .5;
-    }
-    .scorer-rank.top { opacity: 1; color: var(--accent, #6c5ce7); }
-    .scorer-logo-sm {
-      width: 28px; height: 28px;
-      object-fit: contain; border-radius: 5px;
-      background: rgba(255,255,255,.06); flex-shrink: 0;
-    }
-    .scorer-logo-placeholder {
-      width: 28px; height: 28px;
-      border-radius: 5px;
-      background: rgba(255,255,255,.08);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 13px; flex-shrink: 0;
-    }
-    .scorer-info { flex: 1; min-width: 0; }
-    .scorer-name { font-weight: 600; font-size: 0.93rem; }
-    .scorer-team-name { font-size: 0.78rem; opacity: .55; }
-    .scorer-goals-col {
-      display: flex; align-items: center; gap: 5px;
-    }
-    .scorer-goals-num {
-      font-size: 1.2rem; font-weight: 800; color: var(--accent, #6c5ce7);
-      min-width: 28px; text-align: center;
-    }
-    .scorer-goals-label { font-size: 0.75rem; opacity: .5; }
-    .scorer-rating-col {
-      min-width: 48px; text-align: center;
-    }
-    .scorer-rating-val {
-      display: inline-block;
-      background: rgba(255,255,255,.09);
-      border-radius: 7px; padding: 3px 9px;
-      font-size: 0.85rem; font-weight: 700;
-    }
-    .players-empty {
-      text-align: center; padding: 48px 16px;
-      opacity: .4;
-    }
-    .players-empty .empty-icon { font-size: 3rem; margin-bottom: 12px; }
-    .players-empty p { margin: 0; font-size: 0.9rem; }
+    /* Goal chips */
+    .goals-chips { display:flex;flex-wrap:wrap;gap:5px;min-height:20px; }
+    .goal-chip { display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.08);border-radius:16px;padding:4px 10px 4px 8px;font-size:.78rem;line-height:1.2; }
+    .goal-chip-dot { width:7px;height:7px;border-radius:50%;flex-shrink:0; }
+    .goal-chip-min { font-weight:700;opacity:.7; }
+    .goal-chip-name { font-weight:600; }
+    .goal-chip-assist { opacity:.6;font-size:.73rem; }
+    .goal-chip-og { font-size:.7rem;font-weight:800;color:#ff7675;background:rgba(255,118,117,.15);padding:1px 5px;border-radius:8px;margin-left:2px; }
+    .goal-chip-remove { background:none;border:none;color:#ff6b6b;cursor:pointer;padding:0;font-size:.95rem;line-height:1;margin-left:2px;opacity:.7;transition:opacity .12s; }
+    .goal-chip-remove:hover { opacity:1; }
+    .goals-empty-hint { font-size:.76rem;opacity:.35;font-style:italic; }
 
-    /* --- Logo in admin team list --- */
-    .team-item {
-      display: flex; align-items: center; gap: 10px;
-    }
-    .team-item-logo {
-      width: 30px; height: 30px;
-      object-fit: contain; border-radius: 5px;
-      cursor: pointer; flex-shrink: 0;
-    }
-    .team-item-logo-ph {
-      width: 30px; height: 30px;
-      border-radius: 5px;
-      background: rgba(255,255,255,.06);
-      border: 1px dashed rgba(255,255,255,.2);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 13px; cursor: pointer; flex-shrink: 0;
-      transition: background .12s;
-    }
-    .team-item-logo-ph:hover { background: rgba(255,255,255,.12); }
+    /* Mismatch warning */
+    .gs-mismatch-warn { font-size:.75rem;color:#fdcb6e;margin-top:8px;text-align:center;padding:6px 10px;background:rgba(253,203,110,.08);border-radius:7px; }
+
+    /* ── Non-admin readonly match view ── */
+    .view-match-header { text-align:center;margin-bottom:16px; }
+    .view-match-score  { font-size:3rem;font-weight:900;color:var(--accent,#d4a017);line-height:1; }
+    .view-match-teams  { display:flex;justify-content:space-between;font-size:.82rem;font-weight:600;opacity:.6;margin-top:6px; }
+    .view-goals-list   { list-style:none;padding:0;margin:0; }
+    .view-goal-row     { display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;background:rgba(255,255,255,.04);margin-bottom:4px;font-size:.85rem; }
+    .view-goal-row.away-goal { flex-direction:row-reverse; }
+    .vg-dot  { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
+    .vg-min  { font-weight:700;opacity:.6;min-width:30px;font-size:.8rem; }
+    .vg-name { font-weight:600;flex:1; }
+    .vg-assist { opacity:.6;font-size:.78rem; }
+    .vg-og-tag { font-size:.7rem;font-weight:800;color:#ff7675;background:rgba(255,118,117,.15);padding:2px 6px;border-radius:8px; }
+    .view-no-goals { text-align:center;padding:16px;opacity:.4;font-size:.85rem; }
+    .view-close-row { text-align:center;margin-top:16px; }
+
+    /* ── Match card goal count badge ── */
+    .match-goal-count { font-size:.68rem;font-weight:700;background:rgba(212,160,23,.2);color:var(--accent,#d4a017);border-radius:8px;padding:1px 6px;margin-left:4px; }
+
+    /* ── Players Tab ── */
+    .players-page { padding:0; }
+    .players-tab-header { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px; }
+    .players-tab-header h2 { margin:0; }
+    .team-filter-select { padding:8px 14px;border-radius:9px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);color:#fff;font-size:.88rem;cursor:pointer;min-width:160px; }
+    .team-filter-select:focus { outline:none; }
+    .team-filter-select option { background:#1a1a2e; }
+    .scorers-list { display:flex;flex-direction:column;gap:4px; }
+    .scorer-row { display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;background:rgba(255,255,255,.04);transition:background .12s; }
+    .scorer-row:hover { background:rgba(255,255,255,.07); }
+    .scorer-rank { font-weight:800;font-size:.95rem;min-width:28px;text-align:center;opacity:.5; }
+    .scorer-rank.top { opacity:1;color:var(--accent,#d4a017); }
+    .scorer-logo-sm { width:28px;height:28px;object-fit:contain;border-radius:5px;background:rgba(255,255,255,.06);flex-shrink:0; }
+    .scorer-logo-placeholder { width:28px;height:28px;border-radius:5px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0; }
+    .scorer-info { flex:1;min-width:0; }
+    .scorer-name { font-weight:600;font-size:.93rem; }
+    .scorer-team-name { font-size:.78rem;opacity:.55; }
+    .scorer-goals-col { display:flex;align-items:center;gap:5px; }
+    .scorer-goals-num { font-size:1.2rem;font-weight:800;color:var(--accent,#d4a017);min-width:28px;text-align:center; }
+    .scorer-goals-label { font-size:.75rem;opacity:.5; }
+    .scorer-assists-col { font-size:.8rem;opacity:.6;min-width:40px;text-align:center; }
+    .players-empty { text-align:center;padding:48px 16px;opacity:.4; }
+    .players-empty .empty-icon { font-size:3rem;margin-bottom:12px; }
+    .players-empty p { margin:0;font-size:.9rem; }
+
+    /* ── Admin team list logo ── */
+    .team-item { display:flex;align-items:center;gap:10px; }
+    .team-item-logo    { width:30px;height:30px;object-fit:contain;border-radius:5px;cursor:pointer;flex-shrink:0; }
+    .team-item-logo-ph { width:30px;height:30px;border-radius:5px;background:rgba(255,255,255,.06);border:1px dashed rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;flex-shrink:0;transition:background .12s; }
+    .team-item-logo-ph:hover { background:rgba(255,255,255,.12); }
 
     /* misc */
-    .btn-sm-ghost {
-      background: none;
-      border: 1px solid rgba(255,255,255,.2);
-      color: rgba(255,255,255,.7);
-      padding: 5px 10px; border-radius: 7px;
-      font-size: 0.8rem; cursor: pointer;
-      transition: all .12s;
-    }
-    .btn-sm-ghost:hover { background: rgba(255,255,255,.08); color: #fff; }
-    .btn-sm-accent {
-      background: var(--accent, #6c5ce7);
-      border: none; color: #fff;
-      padding: 6px 12px; border-radius: 7px;
-      font-size: 0.82rem; cursor: pointer;
-      transition: opacity .12s; font-weight: 600;
-    }
-    .btn-sm-accent:hover { opacity: .85; }
+    .btn-sm-ghost  { background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);padding:5px 10px;border-radius:7px;font-size:.8rem;cursor:pointer;transition:all .12s; }
+    .btn-sm-ghost:hover  { background:rgba(255,255,255,.08);color:#fff; }
+    .btn-sm-accent { background:var(--accent,#d4a017);border:none;color:#0a0e1a;padding:6px 12px;border-radius:7px;font-size:.82rem;cursor:pointer;transition:opacity .12s;font-weight:700; }
+    .btn-sm-accent:hover { opacity:.85; }
   </style>
 </head>
 <body>
@@ -508,7 +267,7 @@
         <div class="admin-grid">
           <div class="admin-card">
             <h3>Названия и логотипы команд</h3>
-            <p class="hint">Кликните по иконке команды, чтобы загрузить логотип. Нажмите Enter для сохранения имени.</p>
+            <p class="hint">Кликните по иконке команды для загрузки логотипа. Нажмите Enter для сохранения имени.</p>
             <div id="teamList" class="team-list"></div>
           </div>
           <div class="admin-card">
@@ -524,24 +283,10 @@
             <p class="hint">Загрузите JSON с готовыми матчами или скачайте текущие.</p>
             <div class="import-export-row">
               <button id="exportMatchesBtn" class="btn-secondary">Скачать матчи</button>
-              <label class="btn-accent file-label">
-                Загрузить матчи
+              <label class="btn-accent file-label">Загрузить матчи
                 <input type="file" id="importMatchesFile" accept=".json" hidden>
               </label>
             </div>
-            <details class="import-hint-details">
-              <summary>Формат JSON</summary>
-              <pre class="import-hint-code">[
-  {
-    "home": "Команда А",
-    "away": "Команда Б",
-    "home_goals": 2,
-    "away_goals": 1,
-    "round": 1,
-    "match_type": "group"
-  }
-]</pre>
-            </details>
           </div>
           <div class="admin-card">
             <h3>Добавить матч вручную</h3>
@@ -556,8 +301,7 @@
             <p class="hint">Загрузите JSON с готовой таблицей или скачайте текущую.</p>
             <div class="import-export-row">
               <button id="exportTableBtn" class="btn-secondary">Скачать таблицу</button>
-              <label class="btn-accent file-label">
-                Загрузить таблицу
+              <label class="btn-accent file-label">Загрузить таблицу
                 <input type="file" id="importTableFile" accept=".json" hidden>
               </label>
             </div>
@@ -565,16 +309,6 @@
               Используется загруженная таблица
               <button id="clearCustomTable" class="btn-ghost btn-small">Сбросить</button>
             </div>
-            <details class="import-hint-details">
-              <summary>Формат JSON</summary>
-              <pre class="import-hint-code">[
-  {
-    "name": "Команда А",
-    "p": 8, "w": 5, "d": 2, "l": 1,
-    "gs": 15, "gc": 8, "pts": 17
-  }
-]</pre>
-            </details>
           </div>
           <div class="admin-card">
             <h3>Сброс данных</h3>
@@ -591,51 +325,13 @@
     </footer>
   </div>
 
-  <!-- ======================= MATCH RESULT MODAL ======================= -->
+  <!-- ===================== MATCH MODAL ===================== -->
+  <!-- Content is rendered dynamically by app.js -->
   <div id="modal" class="modal-overlay" hidden>
-    <div class="modal">
-      <h3 id="modalTitle">Результат матча</h3>
-      <div class="modal-match">
-        <div class="modal-team">
-          <span id="modalHomeName">-</span>
-          <input type="number" id="modalHomeGoals" min="0" value="0">
-        </div>
-        <span class="modal-vs">:</span>
-        <div class="modal-team">
-          <input type="number" id="modalAwayGoals" min="0" value="0">
-          <span id="modalAwayName">-</span>
-        </div>
-      </div>
-
-      <!-- Goal Scorers Panel (shown when players exist) -->
-      <div id="goalScorersPanel" class="goal-scorers-panel" hidden>
-        <div class="gs-panel-head">
-          ⚽ Авторы голов
-          <span id="gsCountBadge" class="gs-count-badge">0</span>
-        </div>
-        <div class="gs-two-cols">
-          <div>
-            <div id="gsHomeLabel" class="gs-col-label"></div>
-            <div id="gsHomePlayers"></div>
-          </div>
-          <div>
-            <div id="gsAwayLabel" class="gs-col-label"></div>
-            <div id="gsAwayPlayers"></div>
-          </div>
-        </div>
-        <div id="goalsChips" class="goals-chips"></div>
-        <div id="gsMismatchWarn" class="gs-mismatch-warn" hidden></div>
-      </div>
-
-      <div class="modal-actions">
-        <button id="modalSave" class="btn-accent">Сохранить</button>
-        <button id="modalClear" class="btn-secondary">Очистить</button>
-        <button id="modalCancel" class="btn-ghost">Отмена</button>
-      </div>
-    </div>
+    <div class="modal" id="modalInner" style="max-width:480px;width:95%"></div>
   </div>
 
-  <!-- ========================= TEAM MODAL ========================= -->
+  <!-- ===================== TEAM MODAL ===================== -->
   <div id="teamModal" class="modal-overlay-team" hidden>
     <div class="team-modal-box">
       <div class="team-modal-header">
@@ -658,15 +354,18 @@
           <h4>Состав команды</h4>
           <button class="btn-add-player" onclick="NML.toggleAddPlayer()">+ Игрок</button>
         </div>
+
+        <!-- Add Player Form: номер + фамилия + имя (без рейтинга) -->
         <div id="addPlayerForm" class="add-player-form">
-          <input id="apNum" type="number" class="inp-num" placeholder="#" min="1" max="99">
-          <input id="apName" class="inp-name" placeholder="Имя игрока">
-          <input id="apRating" type="number" class="inp-rating" placeholder="Рейтинг" min="0" max="10" step="0.1">
+          <input id="apNum"       type="number" class="inp-num"  placeholder="#"       min="1" max="99">
+          <input id="apLastName"  class="inp-name"               placeholder="Фамилия">
+          <input id="apFirstName" class="inp-name"               placeholder="Имя">
           <div class="form-btns">
             <button class="btn-sm-accent" onclick="NML.addPlayer()">✓ Добавить</button>
-            <button class="btn-sm-ghost" onclick="NML.toggleAddPlayer()">Отмена</button>
+            <button class="btn-sm-ghost"  onclick="NML.toggleAddPlayer()">Отмена</button>
           </div>
         </div>
+
         <div id="tmRoster"></div>
       </div>
     </div>

@@ -17,20 +17,20 @@
      ========================================================= */
   let teams       = [];   // [{id, name, sort_order, logo}]
   let matches     = [];   // [{id, match_type, slot, round, home_id, away_id, home_goals, away_goals, played}]
-  let settings    = {};   // {seed: '...'}
-  let players     = [];   // [{id, team_id, name, number, rating, sort_order}]
-  let goals       = [];   // [{id, match_id, player_id, team_id, is_own_goal}]
+  let settings    = {};
+  let players     = [];   // [{id, team_id, name, number, sort_order}]
+  let goals       = [];   // [{id, match_id, player_id, team_id, minute, assist_player_id, is_own_goal}]
   let isAdmin     = sessionStorage.getItem('nml_admin') === '1';
   let customTable = null;
 
-  // Team modal state
-  let currentTeamId  = null;
+  let currentTeamId = null;
 
   // Match modal state
   let modalMatchId = null;
-  let modalGoals   = []; // [{player_id, team_id, player_name}] – working copy
+  // modalGoals: [{player_id, team_id, player_name, minute, assist_player_id, assist_name, is_own_goal}]
+  let modalGoals   = [];
+  let goalSide     = 'home'; // 'home' | 'away'
 
-  // Players tab filter
   let playerFilter = '';
 
   /* =========================================================
@@ -39,7 +39,6 @@
   document.addEventListener('DOMContentLoaded', async () => {
     initTabs();
     initAdmin();
-    initModal();
     initAuth();
     initTeamModal();
     applyAdminMode();
@@ -50,45 +49,36 @@
       console.error('Bootstrap error', e);
       toast('Ошибка загрузки — проверьте консоль');
     } finally {
-      // Всегда показываем приложение, даже если что-то упало
       document.getElementById('loading').style.display = 'none';
       document.getElementById('app').style.display = '';
     }
   });
 
   /* =========================================================
-     DATA — load everything from Supabase
+     DATA
      ========================================================= */
   async function loadAll() {
-    // 1. Обязательные таблицы — без них смысла нет
     const [tRes, mRes, sRes] = await Promise.all([
       db.from('teams').select('*').order('sort_order'),
       db.from('matches').select('*').order('id'),
       db.from('settings').select('*'),
     ]);
-
     if (tRes.error || mRes.error || sRes.error) {
       console.error('Load error', tRes.error, mRes.error, sRes.error);
       toast('Ошибка загрузки данных');
       return;
     }
-
     teams   = tRes.data || [];
     matches = mRes.data || [];
     settings = {};
     (sRes.data || []).forEach(r => { settings[r.key] = r.value; });
 
-    // 2. Необязательные таблицы — падение не ломает сайт.
-    //    Если migration.sql ещё не запускали — просто пустые массивы.
     players = await db.from('players').select('*').order('sort_order').order('id')
-      .then(r => r.error ? [] : (r.data || []))
-      .catch(() => []);
+      .then(r => r.error ? [] : (r.data || [])).catch(() => []);
 
     goals = await db.from('goals').select('*').order('id')
-      .then(r => r.error ? [] : (r.data || []))
-      .catch(() => []);
+      .then(r => r.error ? [] : (r.data || [])).catch(() => []);
 
-    // Restore custom table from settings
     if (settings.custom_table) {
       try { customTable = JSON.parse(settings.custom_table); } catch { customTable = null; }
     } else {
@@ -140,7 +130,10 @@
     const group  = matches.filter(m => m.match_type === 'group');
     const played = group.filter(m => m.played).length;
     const total  = group.length;
-    const gcount = group.filter(m => m.played).reduce((s,m) => s + (m.home_goals||0) + (m.away_goals||0), 0);
+    const gcount = goals.filter(g => {
+      const m = matches.find(x => x.id === g.match_id);
+      return m && m.match_type === 'group' && m.played;
+    }).length;
     document.getElementById('statTeams').textContent     = teams.length;
     document.getElementById('statPlayed').textContent    = played;
     document.getElementById('statGoals').textContent     = gcount;
@@ -151,7 +144,7 @@
   function getStandings() {
     const map = {};
     teams.forEach(t => {
-      map[t.id] = { id: t.id, name: t.name, p:0, w:0, d:0, l:0, gs:0, gc:0, gd:0, pts:0 };
+      map[t.id] = { id:t.id, name:t.name, p:0, w:0, d:0, l:0, gs:0, gc:0, gd:0, pts:0 };
     });
     matches.filter(m => m.match_type === 'group' && m.played).forEach(m => {
       const h = map[m.home_id], a = map[m.away_id];
@@ -164,16 +157,14 @@
       else if (m.home_goals < m.away_goals) { a.w++; a.pts += 3; h.l++; }
       else                                  { h.d++; h.pts++;    a.d++; a.pts++; }
     });
-    return Object.values(map).sort((a, b) =>
+    return Object.values(map).sort((a,b) =>
       b.pts - a.pts || b.gd - a.gd || b.gs - a.gs || a.name.localeCompare(b.name)
     );
   }
 
-  function teamLogoHTML(teamId, cls = 'team-logo-sm', phCls = 'team-logo-placeholder-sm') {
+  function teamLogoHTML(teamId, cls='team-logo-sm', phCls='team-logo-placeholder-sm') {
     const t = teams.find(x => x.id === teamId);
-    if (t && t.logo) {
-      return `<img src="${esc(t.logo)}" class="${cls}" alt="">`;
-    }
+    if (t && t.logo) return `<img src="${esc(t.logo)}" class="${cls}" alt="">`;
     return `<span class="${phCls}">⚽</span>`;
   }
 
@@ -187,10 +178,10 @@
       const tid   = r.id || (teams.find(t => t.name === r.name) || {}).id;
       const logo  = teamLogoHTML(tid);
       const click = (tid && isAdmin) ? `onclick="NML.openTeam(${tid})"` : '';
-      const cursorStyle = (tid && isAdmin) ? '' : 'style="cursor:default"';
+      const cs    = (tid && isAdmin) ? '' : 'style="cursor:default"';
       return `<tr class="${cls}">
         <td class="col-pos">${pos}</td>
-        <td class="col-team" ${click} ${cursorStyle}>
+        <td class="col-team" ${click} ${cs}>
           <div class="team-cell">${logo}<span class="team-cell-name">${esc(r.name)}</span></div>
         </td>
         <td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td>
@@ -212,8 +203,7 @@
     }
     const rounds = {};
     group.forEach(m => { (rounds[m.round] = rounds[m.round] || []).push(m); });
-
-    el.innerHTML = Object.keys(rounds).sort((a,b) => a - b).map(r => {
+    el.innerHTML = Object.keys(rounds).sort((a,b) => a-b).map(r => {
       const list   = rounds[r];
       const played = list.filter(m => m.played).length;
       return `<div class="matchday">
@@ -232,7 +222,13 @@
     const aLogo  = teamLogoHTML(m.away_id);
     const gCount = goals.filter(g => g.match_id === m.id).length;
     const gTag   = (m.played && gCount > 0) ? `<span class="match-goal-count">⚽ ${gCount}</span>` : '';
-    return `<div class="match-card${pCls}" onclick="NML.open(${m.id})">
+
+    // Clickable for admin always; for non-admin only if match is played
+    const clickable = isAdmin || m.played;
+    const cursor    = clickable ? '' : 'style="cursor:default"';
+    const onclick   = clickable ? `onclick="NML.open(${m.id})"` : '';
+
+    return `<div class="match-card${pCls}" ${onclick} ${cursor}>
       <span class="match-home${hW}">${hLogo}${esc(hName)}</span>
       <span class="match-score">${score}${gTag}</span>
       <span class="match-away${aW}">${esc(aName)}${aLogo}</span></div>`;
@@ -251,18 +247,15 @@
     const el = document.getElementById('playersContent');
     if (!el) return;
 
-    // Build goal counts per player
-    const goalMap = {};
+    // Goal counts (exclude own goals for stats)
+    const goalMap   = {};
+    const assistMap = {};
     goals.forEach(g => {
-      if (g.player_id) goalMap[g.player_id] = (goalMap[g.player_id] || 0) + 1;
+      if (g.player_id && !g.is_own_goal)     goalMap[g.player_id]   = (goalMap[g.player_id]   || 0) + 1;
+      if (g.assist_player_id)                assistMap[g.assist_player_id] = (assistMap[g.assist_player_id] || 0) + 1;
     });
 
-    // Filter
-    const filteredTeams = playerFilter
-      ? teams.filter(t => String(t.id) === String(playerFilter))
-      : teams;
-
-    let allPlayers = players.filter(p =>
+    const allPlayers = players.filter(p =>
       !playerFilter || String(p.team_id) === String(playerFilter)
     );
 
@@ -275,37 +268,35 @@
       return;
     }
 
-    // Sort by goals desc, then rating desc, then name
-    const sorted = [...allPlayers].sort((a, b) => {
+    const sorted = [...allPlayers].sort((a,b) => {
       const ga = goalMap[a.id] || 0, gb = goalMap[b.id] || 0;
       if (gb !== ga) return gb - ga;
-      const ra = a.rating || 0, rb = b.rating || 0;
-      if (rb !== ra) return rb - ra;
       return (a.name || '').localeCompare(b.name || '');
     });
 
     const rows = sorted.map((p, i) => {
-      const team   = teams.find(t => t.id === p.team_id) || {};
-      const g      = goalMap[p.id] || 0;
-      const logo   = team.logo
+      const team    = teams.find(t => t.id === p.team_id) || {};
+      const g       = goalMap[p.id]   || 0;
+      const a       = assistMap[p.id] || 0;
+      const logo    = team.logo
         ? `<img src="${esc(team.logo)}" class="scorer-logo-sm" alt="">`
         : `<div class="scorer-logo-placeholder">⚽</div>`;
-      const rank   = i + 1;
+      const rank    = i + 1;
       const rankCls = rank <= 3 ? ' top' : '';
-      const rating = p.rating != null
-        ? `<div class="scorer-rating-col"><span class="scorer-rating-val">${p.rating}</span></div>` : '';
+      const numTxt  = p.number ? ` <span style="opacity:.35;font-weight:400">#${p.number}</span>` : '';
+      const assistTxt = a > 0 ? `<div class="scorer-assists-col" title="Ассистов">👟 ${a}</div>` : '<div class="scorer-assists-col"></div>';
       return `<div class="scorer-row">
         <div class="scorer-rank${rankCls}">${rank}</div>
         ${logo}
         <div class="scorer-info">
-          <div class="scorer-name">${esc(p.name)}${p.number ? ` <span style="opacity:.4;font-weight:400">#${p.number}</span>` : ''}</div>
+          <div class="scorer-name">${esc(p.name)}${numTxt}</div>
           <div class="scorer-team-name">${esc(team.name || '')}</div>
         </div>
         <div class="scorer-goals-col">
           <span class="scorer-goals-num">${g}</span>
-          <span class="scorer-goals-label">гол${g === 1 ? '' : g < 5 && g > 1 ? 'а' : 'ов'}</span>
+          <span class="scorer-goals-label">гол${g===1?'':g<5&&g>1?'а':'ов'}</span>
         </div>
-        ${rating}
+        ${assistTxt}
       </div>`;
     }).join('');
 
@@ -317,9 +308,7 @@
     const g = matches.filter(m => m.match_type === 'group');
     return g.length > 0 && g.every(m => m.played);
   }
-
   function slotMatch(slot) { return matches.find(m => m.slot === slot) || null; }
-
   function winner(m) {
     if (!m || !m.played) return null;
     if (m.home_goals > m.away_goals) return m.home_id;
@@ -330,80 +319,60 @@
   function renderPlayoff() {
     const el    = document.getElementById('playoffContent');
     const group = matches.filter(m => m.match_type === 'group');
-
     if (!group.length) {
       el.innerHTML = '<div class="playoff-locked"><div class="lock-icon">🔒</div><p>Плей-офф откроется после группового этапа</p></div>';
       return;
     }
-
     const played = group.filter(m => m.played).length;
     const total  = group.length;
-
     if (!groupDone()) {
       const pct = total ? Math.round(played / total * 100) : 0;
       el.innerHTML = `<div class="playoff-locked">
         <div class="lock-icon">⚽</div>
         <p>Групповой этап: ${played} / ${total} матчей</p>
-        <div class="playoff-progress"><div class="playoff-progress-bar" style="width:${pct}%"></div></div>
-        </div>`;
+        <div class="playoff-progress"><div class="playoff-progress-bar" style="width:${pct}%"></div></div></div>`;
       return;
     }
 
     const st = getStandings();
-
     const q1 = slotMatch('q1'), q2 = slotMatch('q2');
     let html = `<div class="playoff-section"><h2>Стыковые матчи (7-10 места)</h2><div class="qual-matches">`;
     html += bracketHTML(q1, st[6], st[9], 'q1');
     html += bracketHTML(q2, st[7], st[8], 'q2');
     html += `</div></div>`;
-
-    if (!q1 && !q2 && isAdmin) {
-      html += `<div style="text-align:center;margin-bottom:24px">
-        <button class="btn-accent" onclick="NML.createQual()">Сформировать стыковые матчи</button></div>`;
-    }
+    if (!q1 && !q2 && isAdmin)
+      html += `<div style="text-align:center;margin-bottom:24px"><button class="btn-accent" onclick="NML.createQual()">Сформировать стыковые матчи</button></div>`;
 
     const q1w = winner(q1), q2w = winner(q2);
     const qualDone = q1 && q2 && q1.played && q2.played;
-
-    const qf1 = slotMatch('qf1'), qf2 = slotMatch('qf2'),
-          qf3 = slotMatch('qf3'), qf4 = slotMatch('qf4');
+    const qf1 = slotMatch('qf1'), qf2 = slotMatch('qf2'), qf3 = slotMatch('qf3'), qf4 = slotMatch('qf4');
     const sf1 = slotMatch('sf1'), sf2 = slotMatch('sf2');
     const fin = slotMatch('final');
 
     html += `<div class="playoff-section"><h2>Плей-офф (Сингл элиминейшн)</h2>`;
-
     if (qualDone && !qf1 && isAdmin)
-      html += `<div style="text-align:center;margin-bottom:16px">
-        <button class="btn-accent" onclick="NML.createQF()">Сформировать четвертьфиналы</button></div>`;
-
+      html += `<div style="text-align:center;margin-bottom:16px"><button class="btn-accent" onclick="NML.createQF()">Сформировать четвертьфиналы</button></div>`;
     const qfDone = qf1?.played && qf2?.played && qf3?.played && qf4?.played;
     if (qfDone && !sf1 && isAdmin)
-      html += `<div style="text-align:center;margin-bottom:16px">
-        <button class="btn-accent" onclick="NML.createSF()">Сформировать полуфиналы</button></div>`;
-
+      html += `<div style="text-align:center;margin-bottom:16px"><button class="btn-accent" onclick="NML.createSF()">Сформировать полуфиналы</button></div>`;
     const sfDone = sf1?.played && sf2?.played;
     if (sfDone && !fin && isAdmin)
-      html += `<div style="text-align:center;margin-bottom:16px">
-        <button class="btn-accent" onclick="NML.createFinal()">Сформировать финал</button></div>`;
+      html += `<div style="text-align:center;margin-bottom:16px"><button class="btn-accent" onclick="NML.createFinal()">Сформировать финал</button></div>`;
 
     html += `<div class="bracket">`;
-
     html += `<div class="bracket-round"><div class="bracket-round-title">Четвертьфинал</div>`;
-    html += bracketHTML(qf1, st[0], q2w !== null ? { id: q2w, name: tName(q2w) } : null, 'qf1');
+    html += bracketHTML(qf1, st[0], q2w !== null ? {id:q2w,name:tName(q2w)} : null, 'qf1');
     html += bracketHTML(qf2, st[3], st[4], 'qf2');
-    html += bracketHTML(qf3, st[1], q1w !== null ? { id: q1w, name: tName(q1w) } : null, 'qf3');
+    html += bracketHTML(qf3, st[1], q1w !== null ? {id:q1w,name:tName(q1w)} : null, 'qf3');
     html += bracketHTML(qf4, st[2], st[5], 'qf4');
     html += `</div>`;
-
     html += `<div class="bracket-round"><div class="bracket-round-title">Полуфинал</div>`;
     html += bracketHTML(sf1, winObj(qf1), winObj(qf2), 'sf1');
     html += bracketHTML(sf2, winObj(qf3), winObj(qf4), 'sf2');
     html += `</div>`;
-
     html += `<div class="bracket-round"><div class="bracket-round-title">Финал</div>`;
     html += bracketHTML(fin, winObj(sf1), winObj(sf2), 'final');
     html += `</div>`;
-
     html += `<div class="bracket-round"><div class="bracket-round-title">Чемпион</div>`;
     const champ = winner(fin);
     if (champ !== null) {
@@ -415,19 +384,17 @@
       html += `<div class="bracket-match no-click"><div class="bracket-team tbd"><span class="team-name">TBD</span><span class="team-score"></span></div></div>`;
     }
     html += `</div></div></div>`;
-
     el.innerHTML = html;
   }
 
   function winObj(m) {
     const w = winner(m);
-    return w !== null ? { id: w, name: tName(w) } : null;
+    return w !== null ? {id:w, name:tName(w)} : null;
   }
 
   function bracketHTML(m, homeObj, awayObj, slot) {
     const homeName = homeObj ? homeObj.name : 'TBD';
     const awayName = awayObj ? awayObj.name : 'TBD';
-
     if (m && m.played) {
       const w = winner(m);
       const hCls = w === m.home_id ? ' winner' : '';
@@ -437,12 +404,12 @@
         <div class="bracket-team${aCls}"><span class="team-name">${esc(tName(m.away_id))}</span><span class="team-score">${m.away_goals}</span></div></div>`;
     }
     if (m) {
-      return `<div class="bracket-match" onclick="NML.open(${m.id})">
+      const onclick = isAdmin ? `onclick="NML.open(${m.id})"` : '';
+      return `<div class="bracket-match" ${onclick}>
         <div class="bracket-team"><span class="team-name">${esc(tName(m.home_id))}</span><span class="team-score"></span></div>
         <div class="bracket-team"><span class="team-name">${esc(tName(m.away_id))}</span><span class="team-score"></span></div></div>`;
     }
-    const hTbd = homeObj ? '' : ' tbd';
-    const aTbd = awayObj ? '' : ' tbd';
+    const hTbd = homeObj ? '' : ' tbd', aTbd = awayObj ? '' : ' tbd';
     return `<div class="bracket-match no-click">
       <div class="bracket-team${hTbd}"><span class="team-name">${esc(homeName)}</span><span class="team-score"></span></div>
       <div class="bracket-team${aTbd}"><span class="team-name">${esc(awayName)}</span><span class="team-score"></span></div></div>`;
@@ -454,8 +421,8 @@
     if (!list) return;
     list.innerHTML = teams.map(t => {
       const logoHTML = t.logo
-        ? `<img src="${esc(t.logo)}" class="team-item-logo" title="Кликните, чтобы сменить логотип" onclick="NML.promptLogoUpload(${t.id})">`
-        : `<div class="team-item-logo-ph" title="Загрузить логотип" onclick="NML.promptLogoUpload(${t.id})">⚽</div>`;
+        ? `<img src="${esc(t.logo)}" class="team-item-logo" onclick="NML.promptLogoUpload(${t.id})">`
+        : `<div class="team-item-logo-ph" onclick="NML.promptLogoUpload(${t.id})">⚽</div>`;
       return `<div class="team-item">
         <span class="team-num">${t.sort_order}.</span>
         ${logoHTML}
@@ -464,9 +431,7 @@
           onkeydown="if(event.key==='Enter')this.blur()">
       </div>`;
     }).join('');
-
     if (settings.seed) document.getElementById('seedInput').value = settings.seed;
-
     const badge = document.getElementById('customTableBadge');
     if (badge) badge.hidden = !customTable;
     fillTeamSelects();
@@ -487,7 +452,7 @@
      TEAM MODAL
      ========================================================= */
   function openTeamModal(teamId) {
-    if (!isAdmin) return; // только админ может открывать состав
+    if (!isAdmin) return;
     currentTeamId = teamId;
     renderTeamModal();
     document.getElementById('teamModal').hidden = false;
@@ -501,30 +466,19 @@
   function renderTeamModal() {
     const t = teams.find(x => x.id === currentTeamId);
     if (!t) return;
-
-    // Header
     document.getElementById('tmTitle').textContent = t.name;
     const img = document.getElementById('tmLogoImg');
     const ph  = document.getElementById('tmLogoPlaceholder');
-    if (t.logo) {
-      img.src    = t.logo;
-      img.hidden = false;
-      ph.hidden  = true;
-    } else {
-      img.hidden = true;
-      ph.hidden  = false;
-    }
+    if (t.logo) { img.src = t.logo; img.hidden = false; ph.hidden = true; }
+    else        { img.hidden = true;  ph.hidden = false; }
 
-    // Stats for this team
-    const st = getStandings().find(r => r.id === currentTeamId) || {};
+    const st       = getStandings().find(r => r.id === currentTeamId) || {};
     const teamGoals = goals.filter(g => g.team_id === currentTeamId && !g.is_own_goal).length;
     const pCount    = players.filter(p => p.team_id === currentTeamId).length;
     document.getElementById('tmMeta').innerHTML =
-      `<span class="meta-item">📋 ${pCount} игрок${pCount === 1 ? '' : pCount < 5 ? 'а' : 'ов'}</span>` +
+      `<span class="meta-item">📋 ${pCount} игрок${pCount===1?'':pCount<5?'а':'ов'}</span>` +
       (st.pts != null ? `<span class="meta-item">🏆 ${st.pts} очков</span>` : '') +
-      `<span class="meta-item">⚽ ${teamGoals} гол${teamGoals === 1 ? '' : teamGoals < 5 && teamGoals > 1 ? 'а' : 'ов'} забито</span>`;
-
-    // Roster
+      `<span class="meta-item">⚽ ${teamGoals} гол${teamGoals===1?'':teamGoals<5&&teamGoals>1?'а':'ов'}</span>`;
     renderRoster();
   }
 
@@ -533,7 +487,13 @@
       .sort((a,b) => (a.number||999) - (b.number||999) || (a.name||'').localeCompare(b.name||''));
 
     const goalMap = {};
-    goals.forEach(g => { if (g.player_id) goalMap[g.player_id] = (goalMap[g.player_id] || 0) + 1; });
+    goals.forEach(g => {
+      if (g.player_id && !g.is_own_goal) goalMap[g.player_id] = (goalMap[g.player_id] || 0) + 1;
+    });
+    const assistMap = {};
+    goals.forEach(g => {
+      if (g.assist_player_id) assistMap[g.assist_player_id] = (assistMap[g.assist_player_id] || 0) + 1;
+    });
 
     const el = document.getElementById('tmRoster');
     if (!roster.length) {
@@ -544,30 +504,28 @@
     }
 
     el.innerHTML = roster.map(p => {
-      const g     = goalMap[p.id] || 0;
-      const gCls  = g ? '' : ' zero';
-      const rBadge = p.rating != null ? `<span class="player-rating">★ ${p.rating}</span>` : '';
+      const g    = goalMap[p.id]   || 0;
+      const a    = assistMap[p.id] || 0;
+      const gCls = g ? '' : ' zero';
+      const assistBadge = a > 0
+        ? `<span class="player-goals-badge" style="background:rgba(255,255,255,.15);color:rgba(255,255,255,.75)" title="Ассистов">👟 ${a}</span>`
+        : '';
       return `<div class="player-item">
         <span class="player-num">${p.number ? '#' + p.number : '—'}</span>
         <span class="player-name">${esc(p.name)}</span>
-        ${rBadge}
         <span class="player-goals-badge${gCls}">⚽ ${g}</span>
+        ${assistBadge}
         <button class="btn-remove-player" onclick="NML.removePlayer(${p.id})" title="Удалить игрока">✕</button>
       </div>`;
     }).join('');
   }
 
   function initTeamModal() {
-    // Закрытие по клику на подложку
     const overlay = document.getElementById('teamModal');
-    overlay.addEventListener('click', e => {
-      if (e.target === overlay) closeTeamModal();
-    });
-    // Закрытие по Escape
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeTeamModal(); });
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && !overlay.hidden) closeTeamModal();
     });
-    // Logo file input
     document.getElementById('tmLogoInput').addEventListener('change', async e => {
       const file = e.target.files[0];
       if (!file) return;
@@ -576,23 +534,27 @@
     });
   }
 
+  /* ── Add player: Фамилия + Имя + Номер (no rating) ── */
   async function addPlayer() {
-    const num  = parseInt(document.getElementById('apNum').value) || null;
-    const name = document.getElementById('apName').value.trim();
-    const rat  = parseFloat(document.getElementById('apRating').value);
-    if (!name) { toast('Введите имя игрока'); return; }
+    const num       = parseInt(document.getElementById('apNum').value) || null;
+    const lastName  = document.getElementById('apLastName').value.trim();
+    const firstName = document.getElementById('apFirstName').value.trim();
+
+    if (!lastName) { toast('Введите фамилию игрока'); return; }
+
+    const fullName  = firstName ? `${lastName} ${firstName}` : lastName;
 
     const { error } = await db.from('players').insert([{
       team_id:    currentTeamId,
-      name,
+      name:       fullName,
       number:     num,
-      rating:     isNaN(rat) ? null : rat,
       sort_order: players.filter(p => p.team_id === currentTeamId).length,
     }]);
     if (error) { toast('Ошибка добавления игрока'); console.error(error); return; }
+
     document.getElementById('apNum').value = '';
-    document.getElementById('apName').value = '';
-    document.getElementById('apRating').value = '';
+    document.getElementById('apLastName').value  = '';
+    document.getElementById('apFirstName').value = '';
     await loadAll();
     renderTeamModal();
     toast('Игрок добавлен');
@@ -611,9 +573,7 @@
   function toggleAddPlayerForm() {
     const form = document.getElementById('addPlayerForm');
     form.classList.toggle('visible');
-    if (form.classList.contains('visible')) {
-      document.getElementById('apName').focus();
-    }
+    if (form.classList.contains('visible')) document.getElementById('apLastName').focus();
   }
 
   /* =========================================================
@@ -621,9 +581,8 @@
      ========================================================= */
   async function uploadLogoForTeam(teamId, file) {
     const reader = new FileReader();
-    reader.onload = async (e) => {
-      const dataUrl = e.target.result;
-      const { error } = await db.from('teams').update({ logo: dataUrl }).eq('id', teamId);
+    reader.onload = async e => {
+      const { error } = await db.from('teams').update({ logo: e.target.result }).eq('id', teamId);
       if (error) { toast('Ошибка загрузки логотипа'); console.error(error); return; }
       await loadAll();
       if (currentTeamId === teamId) renderTeamModal();
@@ -632,141 +591,320 @@
     reader.readAsDataURL(file);
   }
 
-  // Admin team list logo upload — create hidden file input, trigger it
   function promptLogoUpload(teamId) {
     if (!isAdmin) return;
     const inp = document.createElement('input');
-    inp.type  = 'file';
-    inp.accept = 'image/*';
-    inp.onchange = async e => {
-      if (e.target.files[0]) await uploadLogoForTeam(teamId, e.target.files[0]);
-    };
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = async e => { if (e.target.files[0]) await uploadLogoForTeam(teamId, e.target.files[0]); };
     inp.click();
   }
 
   /* =========================================================
-     MATCH MODAL — with goal scorers
+     MATCH MODAL
      ========================================================= */
+
+  /* ── Open: admin gets edit mode, non-admin gets view mode ── */
   function openModal(matchId) {
-    if (!isAdmin) return;
     const m = matches.find(x => x.id === matchId);
     if (!m) return;
+    if (!m.played && !isAdmin) return; // guests see only played matches
 
     modalMatchId = matchId;
-    document.getElementById('modalHomeName').textContent  = tName(m.home_id);
-    document.getElementById('modalAwayName').textContent  = tName(m.away_id);
-    document.getElementById('modalHomeGoals').value = m.played ? m.home_goals : 0;
-    document.getElementById('modalAwayGoals').value = m.played ? m.away_goals : 0;
-    document.getElementById('modalClear').style.display   = m.played ? '' : 'none';
+    goalSide     = 'home';
 
-    const isKnockout = m.match_type !== 'group';
-    document.getElementById('modalTitle').textContent =
-      isKnockout ? 'Результат (плей-офф — ничья невозможна)' : 'Результат матча';
+    // Load existing goals into working copy
+    modalGoals = goals.filter(g => g.match_id === matchId).map(g => {
+      const p  = players.find(x => x.id === g.player_id);
+      const ap = g.assist_player_id ? players.find(x => x.id === g.assist_player_id) : null;
+      return {
+        player_id:        g.player_id,
+        team_id:          g.team_id,
+        player_name:      p  ? p.name  : '?',
+        minute:           g.minute || null,
+        assist_player_id: g.assist_player_id || null,
+        assist_name:      ap ? ap.name : null,
+        is_own_goal:      g.is_own_goal || false,
+      };
+    });
 
-    // Load existing goals for this match into modalGoals (working copy)
-    modalGoals = goals.filter(g => g.match_id === matchId).map(g => ({
-      player_id:   g.player_id,
-      team_id:     g.team_id,
-      is_own_goal: g.is_own_goal,
-      player_name: g.player_id ? (players.find(p => p.id === g.player_id) || {}).name || '?' : '?',
-    }));
+    const inner = document.getElementById('modalInner');
+    inner.innerHTML = isAdmin ? buildAdminModalHTML(m) : buildViewModalHTML(m);
+    document.getElementById('modal').hidden = false;
 
-    // Check if there are any players for these teams
-    const homePlayers = players.filter(p => p.team_id === m.home_id);
-    const awayPlayers = players.filter(p => p.team_id === m.away_id);
-    const panel = document.getElementById('goalScorersPanel');
+    if (isAdmin) {
+      // Attach score change listeners for mismatch warning
+      ['adminHomeGoals', 'adminAwayGoals'].forEach(id => {
+        document.getElementById(id).addEventListener('input', updateGoalChips);
+        document.getElementById(id).addEventListener('keydown', e => {
+          if (e.key === 'Enter') saveModal();
+        });
+      });
+      initGoalSideTabs(m);
+      updateGoalChips();
+    }
+  }
 
-    if (homePlayers.length || awayPlayers.length) {
-      panel.hidden = false;
-      renderGoalScorers(m);
-    } else {
-      panel.hidden = true;
+  /* ── Build HTML for admin edit modal ── */
+  function buildAdminModalHTML(m) {
+    const isKO  = m.match_type !== 'group';
+    const title = isKO ? 'Результат (плей-офф — ничья невозможна)' : 'Результат матча';
+    const hg    = m.played ? m.home_goals : 0;
+    const ag    = m.played ? m.away_goals : 0;
+    const clearBtn = m.played
+      ? `<button onclick="NML.clearModal()" class="btn-secondary">Очистить</button>` : '';
+
+    const hasPlayers = players.some(p => p.team_id === m.home_id || p.team_id === m.away_id);
+    const goalSection = hasPlayers ? buildGoalEntrySection(m) : '';
+
+    return `
+      <h3 style="text-align:center;margin-bottom:18px;font-size:1.1rem">${esc(title)}</h3>
+      <div class="modal-match">
+        <div class="modal-team">
+          <span id="adminHomeName">${esc(tName(m.home_id))}</span>
+          <input type="number" id="adminHomeGoals" min="0" value="${hg}">
+        </div>
+        <span class="modal-vs">:</span>
+        <div class="modal-team">
+          <input type="number" id="adminAwayGoals" min="0" value="${ag}">
+          <span id="adminAwayName">${esc(tName(m.away_id))}</span>
+        </div>
+      </div>
+      ${goalSection}
+      <div class="modal-actions" style="margin-top:16px">
+        <button onclick="NML.saveModal()" class="btn-accent">Сохранить</button>
+        ${clearBtn}
+        <button onclick="NML.closeModal()" class="btn-ghost">Отмена</button>
+      </div>`;
+  }
+
+  /* ── Build HTML for goal entry (admin) ── */
+  function buildGoalEntrySection(m) {
+    const homeName = shortTeamLabel(tName(m.home_id));
+    const awayName = shortTeamLabel(tName(m.away_id));
+
+    // Populate scorer options will happen via updateGoalPlayerDropdowns()
+    return `
+      <div class="goal-entry-section">
+        <div class="ge-header">⚽ ГОЛЫ</div>
+        <div class="ge-form-row">
+          <input id="geMinute" type="number" class="ge-minute" placeholder="Мин" min="1" max="120">
+          <div class="ge-side-tabs">
+            <button id="geHomeTab" class="ge-side-tab active" onclick="NML.setGoalSide('home')">${esc(homeName)}</button>
+            <button id="geAwayTab" class="ge-side-tab"        onclick="NML.setGoalSide('away')">${esc(awayName)}</button>
+          </div>
+          <select id="geScorer" class="ge-select"><option value="">Игрок...</option></select>
+          <select id="geAssist" class="ge-select"><option value="">Ассист (опц.)</option></select>
+          <label class="ge-og-label"><input type="checkbox" id="geOG" onchange="NML.onOGChange()"> АГ</label>
+          <button class="btn-sm-accent" onclick="NML.addGoalEvent()">+ Гол</button>
+        </div>
+        <div id="goalsChips" class="goals-chips"></div>
+        <div id="gsMismatchWarn" class="gs-mismatch-warn" hidden></div>
+      </div>`;
+  }
+
+  /* ── Init goal side tabs & populate dropdowns after HTML is injected ── */
+  function initGoalSideTabs(m) {
+    goalSide = 'home';
+    updateGoalPlayerDropdowns(m);
+  }
+
+  /* ── Set goal side (home/away) ── */
+  function setGoalSide(side) {
+    goalSide = side;
+    const m  = matches.find(x => x.id === modalMatchId);
+    if (!m) return;
+    document.getElementById('geHomeTab').classList.toggle('active', side === 'home');
+    document.getElementById('geAwayTab').classList.toggle('active', side === 'away');
+    updateGoalPlayerDropdowns(m);
+  }
+
+  /* ── Update scorer & assist dropdowns ── */
+  function updateGoalPlayerDropdowns(m) {
+    if (!m) m = matches.find(x => x.id === modalMatchId);
+    if (!m) return;
+
+    const teamId    = goalSide === 'home' ? m.home_id : m.away_id;
+    const teamPlayers = players.filter(p => p.team_id === teamId)
+      .sort((a,b) => (a.number||999) - (b.number||999));
+
+    const scorerSel = document.getElementById('geScorer');
+    const assistSel = document.getElementById('geAssist');
+    if (!scorerSel || !assistSel) return;
+
+    const makeOpt = p =>
+      `<option value="${p.id}">${p.number ? '#'+p.number+' ' : ''}${esc(p.name)}</option>`;
+
+    scorerSel.innerHTML = '<option value="">Игрок...</option>' +
+      teamPlayers.map(makeOpt).join('');
+
+    assistSel.innerHTML = '<option value="">Ассист (опц.)</option>' +
+      teamPlayers.map(makeOpt).join('');
+
+    // Remove selected scorer from assist options dynamically
+    scorerSel.onchange = () => {
+      const scorerId = parseInt(scorerSel.value) || 0;
+      Array.from(assistSel.options).forEach(opt => {
+        opt.disabled = opt.value && parseInt(opt.value) === scorerId;
+      });
+    };
+  }
+
+  /* ── Own goal change: if OG, disable assist ── */
+  function onOGChange() {
+    const isOG     = document.getElementById('geOG').checked;
+    const assistSel = document.getElementById('geAssist');
+    if (!assistSel) return;
+    if (isOG) { assistSel.value = ''; assistSel.disabled = true; }
+    else       { assistSel.disabled = false; }
+  }
+
+  /* ── Add goal event (admin) ── */
+  function addGoalEvent() {
+    const m = matches.find(x => x.id === modalMatchId);
+    if (!m) return;
+
+    const minute   = parseInt(document.getElementById('geMinute').value) || null;
+    const scorerId = parseInt(document.getElementById('geScorer').value) || null;
+    const assistId = parseInt(document.getElementById('geAssist').value) || null;
+    const isOG     = document.getElementById('geOG').checked;
+
+    if (!scorerId) { toast('Выберите игрока, который забил'); return; }
+
+    const scorer   = players.find(p => p.id === scorerId);
+    const assist   = assistId ? players.find(p => p.id === assistId) : null;
+    const teamId   = goalSide === 'home' ? m.home_id : m.away_id;
+
+    modalGoals.push({
+      player_id:        scorerId,
+      team_id:          teamId,
+      player_name:      scorer  ? scorer.name  : '?',
+      minute,
+      assist_player_id: assistId || null,
+      assist_name:      assist  ? assist.name  : null,
+      is_own_goal:      isOG,
+    });
+
+    // Reset minute input; keep side & scorer for quick multi-goal entry
+    document.getElementById('geMinute').value = '';
+    document.getElementById('geOG').checked   = false;
+    if (document.getElementById('geAssist')) {
+      document.getElementById('geAssist').disabled = false;
+      document.getElementById('geAssist').value    = '';
     }
 
-    document.getElementById('modal').hidden = false;
-    document.getElementById('modalHomeGoals').focus();
-    document.getElementById('modalHomeGoals').select();
+    updateGoalChips();
   }
 
-  function renderGoalScorers(m) {
-    const homePlayers = players.filter(p => p.team_id === m.home_id);
-    const awayPlayers = players.filter(p => p.team_id === m.away_id);
-
-    // Labels
-    document.getElementById('gsHomeLabel').textContent = tName(m.home_id);
-    document.getElementById('gsAwayLabel').textContent = tName(m.away_id);
-
-    // Home players
-    const hEl = document.getElementById('gsHomePlayers');
-    hEl.innerHTML = homePlayers.length
-      ? homePlayers.map(p =>
-          `<button class="gs-player-btn" onclick="NML.addGoal(${p.id},${m.home_id},'${esc(p.name)}')" title="${esc(p.name)}">
-            ${p.number ? `<b>#${p.number}</b> ` : ''}${esc(p.name)}
-          </button>`).join('')
-      : `<div class="gs-no-players">Нет игроков</div>`;
-
-    // Away players
-    const aEl = document.getElementById('gsAwayPlayers');
-    aEl.innerHTML = awayPlayers.length
-      ? awayPlayers.map(p =>
-          `<button class="gs-player-btn" onclick="NML.addGoal(${p.id},${m.away_id},'${esc(p.name)}')" title="${esc(p.name)}">
-            ${p.number ? `<b>#${p.number}</b> ` : ''}${esc(p.name)}
-          </button>`).join('')
-      : `<div class="gs-no-players">Нет игроков</div>`;
-
-    updateGoalChips(m);
-  }
-
-  function addGoalToModal(playerId, teamId, playerName) {
-    modalGoals.push({ player_id: playerId, team_id: teamId, player_name: playerName, is_own_goal: false });
-    const m = matches.find(x => x.id === modalMatchId);
-    if (m) updateGoalChips(m);
-  }
-
+  /* ── Remove goal from working list ── */
   function removeGoalFromModal(idx) {
     modalGoals.splice(idx, 1);
-    const m = matches.find(x => x.id === modalMatchId);
-    if (m) updateGoalChips(m);
+    updateGoalChips();
   }
 
-  function updateGoalChips(m) {
-    const hGoals = modalGoals.filter(g => g.team_id === m.home_id).length;
-    const aGoals = modalGoals.filter(g => g.team_id === m.away_id).length;
-    document.getElementById('gsCountBadge').textContent = modalGoals.length;
+  /* ── Render goal chips + mismatch warning ── */
+  function updateGoalChips() {
+    const m = matches.find(x => x.id === modalMatchId);
+    if (!m) return;
+    const chipsEl = document.getElementById('goalsChips');
+    if (!chipsEl) return;
 
-    // Chips
-    const chips = document.getElementById('goalsChips');
-    chips.innerHTML = modalGoals.length
-      ? modalGoals.map((g, i) => {
-          const isHome = g.team_id === m.home_id;
-          const color  = isHome ? '#6c5ce7' : '#e17055';
-          return `<span class="goal-chip">
-            <span class="goal-chip-dot" style="background:${color}"></span>
-            ${esc(g.player_name)}
-            <button class="goal-chip-remove" onclick="NML.removeGoal(${i})">×</button>
-          </span>`;
-        }).join('')
-      : '<span style="opacity:.35;font-size:.78rem">Нажмите на игрока выше, чтобы отметить гол</span>';
+    if (!modalGoals.length) {
+      chipsEl.innerHTML = '<span class="goals-empty-hint">Нажмите «+ Гол» чтобы записать авторов голов</span>';
+    } else {
+      // Sort by minute
+      const sorted = [...modalGoals].map((g,i) => ({...g, _idx: i}))
+        .sort((a,b) => (a.minute||0) - (b.minute||0));
+
+      chipsEl.innerHTML = sorted.map(g => {
+        const isHome = g.team_id === m.home_id;
+        const color  = isHome ? '#d4a017' : '#74b9ff';
+        const minTxt = g.minute ? `<span class="goal-chip-min">${g.minute}'</span>` : '';
+        const ogTag  = g.is_own_goal ? '<span class="goal-chip-og">АГ</span>' : '';
+        const asTxt  = (!g.is_own_goal && g.assist_name)
+          ? `<span class="goal-chip-assist">(${esc(shortName(g.assist_name))})</span>` : '';
+        return `<span class="goal-chip">
+          <span class="goal-chip-dot" style="background:${color}"></span>
+          ${minTxt}
+          <span class="goal-chip-name">${esc(shortName(g.player_name))}</span>
+          ${ogTag}${asTxt}
+          <button class="goal-chip-remove" onclick="NML.removeGoal(${g._idx})">×</button>
+        </span>`;
+      }).join('');
+    }
 
     // Mismatch warning
-    const hScore = parseInt(document.getElementById('modalHomeGoals').value) || 0;
-    const aScore = parseInt(document.getElementById('modalAwayGoals').value) || 0;
-    const warn   = document.getElementById('gsMismatchWarn');
-    const total  = hGoals + aGoals;
+    const warn = document.getElementById('gsMismatchWarn');
+    if (!warn) return;
+
+    const hScore = parseInt((document.getElementById('adminHomeGoals') || {}).value) || 0;
+    const aScore = parseInt((document.getElementById('adminAwayGoals') || {}).value) || 0;
+
+    // Own goals count for the opponent
+    const hGoals = modalGoals.filter(g =>
+      (g.team_id === m.home_id && !g.is_own_goal) ||
+      (g.team_id === m.away_id && g.is_own_goal)
+    ).length;
+    const aGoals = modalGoals.filter(g =>
+      (g.team_id === m.away_id && !g.is_own_goal) ||
+      (g.team_id === m.home_id && g.is_own_goal)
+    ).length;
+
     if (modalGoals.length && (hGoals !== hScore || aGoals !== aScore)) {
-      warn.hidden = false;
-      warn.textContent = `⚠ Голов записано: ${hGoals}+${aGoals}=${total}, а счёт ${hScore}:${aScore}`;
+      warn.hidden      = false;
+      warn.textContent = `⚠ Записано: ${hGoals}+${aGoals}=${hGoals+aGoals}, а счёт ${hScore}:${aScore}`;
     } else {
       warn.hidden = true;
     }
   }
 
+  /* ── Build HTML for non-admin readonly view ── */
+  function buildViewModalHTML(m) {
+    const matchGoals = goals.filter(g => g.match_id === m.id)
+      .sort((a,b) => (a.minute||0) - (b.minute||0));
+
+    const goalsHTML = matchGoals.length
+      ? matchGoals.map(g => {
+          const p   = players.find(x => x.id === g.player_id);
+          const ap  = g.assist_player_id ? players.find(x => x.id === g.assist_player_id) : null;
+          const isHome = (g.team_id === m.home_id && !g.is_own_goal) ||
+                         (g.team_id === m.away_id &&  g.is_own_goal);
+          const color  = isHome ? '#d4a017' : '#74b9ff';
+          const align  = isHome ? '' : ' away-goal';
+          const name   = p ? shortName(p.name) : '?';
+          const minTxt = g.minute ? `<span class="vg-min">${g.minute}'</span>` : '<span class="vg-min"></span>';
+          const ogTag  = g.is_own_goal
+            ? '<span class="vg-og-tag">АГ</span>' : '';
+          const assistTxt = (!g.is_own_goal && ap)
+            ? `<span class="vg-assist">(${esc(shortName(ap.name))})</span>` : '';
+          return `<div class="view-goal-row${align}">
+            <span class="vg-dot" style="background:${color}"></span>
+            ${minTxt}
+            <span class="vg-name">${esc(name)} ${ogTag}</span>
+            ${assistTxt}
+          </div>`;
+        }).join('')
+      : '<div class="view-no-goals">Авторы голов не указаны</div>';
+
+    return `
+      <div class="view-match-header">
+        <div class="view-match-score">${m.home_goals} : ${m.away_goals}</div>
+        <div class="view-match-teams">
+          <span>${esc(tName(m.home_id))}</span>
+          <span>${esc(tName(m.away_id))}</span>
+        </div>
+      </div>
+      <div class="view-goals-list">${goalsHTML}</div>
+      <div class="view-close-row">
+        <button onclick="NML.closeModal()" class="btn-accent">Закрыть</button>
+      </div>`;
+  }
+
+  /* ── Save match (admin) ── */
   async function saveModal() {
     if (modalMatchId === null) return;
-    const hg = Math.max(0, parseInt(document.getElementById('modalHomeGoals').value) || 0);
-    const ag = Math.max(0, parseInt(document.getElementById('modalAwayGoals').value) || 0);
-
-    const m = matches.find(x => x.id === modalMatchId);
+    const hg = Math.max(0, parseInt((document.getElementById('adminHomeGoals') || {}).value) || 0);
+    const ag = Math.max(0, parseInt((document.getElementById('adminAwayGoals') || {}).value) || 0);
+    const m  = matches.find(x => x.id === modalMatchId);
     if (!m) return;
 
     if (m.match_type !== 'group' && hg === ag) {
@@ -774,20 +912,20 @@
       return;
     }
 
-    // Save score
     const { error } = await db.from('matches')
       .update({ home_goals: hg, away_goals: ag, played: true })
       .eq('id', modalMatchId);
     if (error) { toast('Ошибка сохранения'); console.error(error); return; }
 
-    // Save goals: delete old, insert new
     await db.from('goals').delete().eq('match_id', modalMatchId);
     if (modalGoals.length) {
       const rows = modalGoals.map(g => ({
-        match_id:    modalMatchId,
-        player_id:   g.player_id,
-        team_id:     g.team_id,
-        is_own_goal: g.is_own_goal || false,
+        match_id:         modalMatchId,
+        player_id:        g.player_id,
+        team_id:          g.team_id,
+        minute:           g.minute   || null,
+        assist_player_id: g.assist_player_id || null,
+        is_own_goal:      g.is_own_goal || false,
       }));
       const { error: ge } = await db.from('goals').insert(rows);
       if (ge) console.error('Goal insert error', ge);
@@ -799,26 +937,18 @@
     syncToSheets();
   }
 
+  /* ── Clear match result (admin) ── */
   async function clearModal() {
     if (modalMatchId === null) return;
     const m = matches.find(x => x.id === modalMatchId);
     if (!m) return;
-
     await db.from('matches')
       .update({ home_goals: null, away_goals: null, played: false })
       .eq('id', modalMatchId);
     await db.from('goals').delete().eq('match_id', modalMatchId);
-
-    const downstream = {
-      'qual':  ['qf', 'sf', 'final'],
-      'qf':    ['sf', 'final'],
-      'sf':    ['final'],
-    };
+    const downstream = { qual:['qf','sf','final'], qf:['sf','final'], sf:['final'] };
     const stages = downstream[m.match_type];
-    if (stages && stages.length) {
-      await db.from('matches').delete().in('match_type', stages);
-    }
-
+    if (stages && stages.length) await db.from('matches').delete().in('match_type', stages);
     closeModal();
     await loadAll();
     toast('Результат очищен');
@@ -831,13 +961,22 @@
     modalGoals   = [];
   }
 
+  /* Close on overlay click or Escape */
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('modal').addEventListener('click', e => {
+      if (e.target.id === 'modal') closeModal();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !document.getElementById('modal').hidden) closeModal();
+    });
+  });
+
   /* =========================================================
-     ACTIONS — Supabase writes
+     SUPABASE ACTIONS
      ========================================================= */
   async function renameTeam(id, name) {
     const clean = name.trim() || 'Команда';
-    const { error } = await db.from('teams').update({ name: clean }).eq('id', id);
-    if (error) { toast('Ошибка сохранения'); console.error(error); return; }
+    await db.from('teams').update({ name: clean }).eq('id', id);
     await loadAll();
   }
 
@@ -846,23 +985,20 @@
     const away_id = +document.getElementById('manualAway').value;
     const hg = parseInt(document.getElementById('manualHomeGoals').value);
     const ag = parseInt(document.getElementById('manualAwayGoals').value);
-
     if (home_id === away_id) { toast('Команды должны быть разными'); return; }
-
     const played = Number.isInteger(hg) && Number.isInteger(ag);
-    const { error } = await db.from('matches').insert([{
-      match_type: 'group', slot: null, round: null,
+    await db.from('matches').insert([{
+      match_type:'group', slot:null, round:null,
       home_id, away_id,
       home_goals: played ? hg : null,
       away_goals: played ? ag : null,
       played,
     }]);
-    if (error) { toast('Ошибка добавления матча'); console.error(error); return; }
     await loadAll();
     toast('Матч добавлен');
   }
 
-  /* --- Generate schedule --- */
+  /* ── Schedule generation ── */
   function seededRng(seed) {
     let s = seed | 0;
     return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
@@ -873,34 +1009,28 @@
     const ids  = teams.map(t => t.id);
     const n    = ids.length;
     if (n < 2) return [];
-
-    const fixed = ids[0];
-    const rot   = ids.slice(1);
+    const fixed = ids[0], rot = ids.slice(1);
     const allRounds = [];
-
     for (let r = 0; r < n - 1; r++) {
-      const pairs = [];
-      pairs.push([fixed, rot[0]]);
+      const pairs = [[fixed, rot[0]]];
       for (let i = 1; i < n / 2; i++) pairs.push([rot[i], rot[n - 2 - i]]);
       allRounds.push(pairs);
       rot.push(rot.shift());
     }
-
     const idx = Array.from({ length: n - 1 }, (_, i) => i);
     for (let i = idx.length - 1; i > 0; i--) {
       const j = Math.floor(rand() * (i + 1));
       [idx[i], idx[j]] = [idx[j], idx[i]];
     }
     const chosen = idx.slice(0, MATCHES_PER_TEAM);
-
     const rows = [];
     chosen.forEach((ri, tour) => {
       allRounds[ri].forEach(([a, b]) => {
         const swap = rand() > 0.5;
         rows.push({
-          match_type: 'group', slot: null, round: tour + 1,
-          home_id: swap ? b : a, away_id: swap ? a : b,
-          home_goals: null, away_goals: null, played: false,
+          match_type:'group', slot:null, round:tour+1,
+          home_id: swap?b:a, away_id: swap?a:b,
+          home_goals:null, away_goals:null, played:false,
         });
       });
     });
@@ -910,20 +1040,16 @@
   async function generateSchedule() {
     const seedVal = parseInt(document.getElementById('seedInput').value);
     if (isNaN(seedVal)) { toast('Введите число для жеребьёвки'); return; }
-
     const hasPlayed = matches.some(m => m.played);
     if (hasPlayed && !confirm('Все результаты будут сброшены. Продолжить?')) return;
-
     document.getElementById('generateBtn').disabled = true;
     await db.from('matches').delete().gt('id', 0);
-
     const rows = computeSchedule(seedVal);
     if (rows.length) {
       const { error } = await db.from('matches').insert(rows);
       if (error) { toast('Ошибка создания расписания'); console.error(error); document.getElementById('generateBtn').disabled = false; return; }
     }
-
-    await db.from('settings').upsert({ key: 'seed', value: String(seedVal) });
+    await db.from('settings').upsert({ key:'seed', value:String(seedVal) });
     await loadAll();
     document.getElementById('generateBtn').disabled = false;
     toast('Расписание создано — ' + rows.length + ' матчей');
@@ -939,54 +1065,47 @@
     toast('Данные сброшены');
   }
 
-  /* --- Create knockout stages --- */
+  /* ── Create knockout stages ── */
   async function createQual() {
     const st = getStandings();
     if (st.length < 10) return;
-    const rows = [
-      { match_type: 'qual', slot: 'q1', round: null, home_id: st[6].id, away_id: st[9].id, played: false },
-      { match_type: 'qual', slot: 'q2', round: null, home_id: st[7].id, away_id: st[8].id, played: false },
-    ];
-    const { error } = await db.from('matches').insert(rows);
-    if (error) { toast('Ошибка создания стыковых'); console.error(error); return; }
+    await db.from('matches').insert([
+      { match_type:'qual', slot:'q1', round:null, home_id:st[6].id, away_id:st[9].id, played:false },
+      { match_type:'qual', slot:'q2', round:null, home_id:st[7].id, away_id:st[8].id, played:false },
+    ]);
     await loadAll(); toast('Стыковые матчи созданы');
   }
 
   async function createQF() {
-    const st  = getStandings();
-    const q1w = winner(slotMatch('q1'));
-    const q2w = winner(slotMatch('q2'));
+    const st = getStandings();
+    const q1w = winner(slotMatch('q1')), q2w = winner(slotMatch('q2'));
     if (!q1w || !q2w) { toast('Сначала завершите стыковые матчи'); return; }
-    const rows = [
-      { match_type: 'qf', slot: 'qf1', round: null, home_id: st[0].id, away_id: q2w,      played: false },
-      { match_type: 'qf', slot: 'qf2', round: null, home_id: st[3].id, away_id: st[4].id,  played: false },
-      { match_type: 'qf', slot: 'qf3', round: null, home_id: st[1].id, away_id: q1w,       played: false },
-      { match_type: 'qf', slot: 'qf4', round: null, home_id: st[2].id, away_id: st[5].id,  played: false },
-    ];
-    const { error } = await db.from('matches').insert(rows);
-    if (error) { toast('Ошибка создания ЧФ'); console.error(error); return; }
+    await db.from('matches').insert([
+      { match_type:'qf', slot:'qf1', round:null, home_id:st[0].id, away_id:q2w,      played:false },
+      { match_type:'qf', slot:'qf2', round:null, home_id:st[3].id, away_id:st[4].id,  played:false },
+      { match_type:'qf', slot:'qf3', round:null, home_id:st[1].id, away_id:q1w,       played:false },
+      { match_type:'qf', slot:'qf4', round:null, home_id:st[2].id, away_id:st[5].id,  played:false },
+    ]);
     await loadAll(); toast('Четвертьфиналы созданы');
   }
 
   async function createSF() {
     const qf1w = winner(slotMatch('qf1')), qf2w = winner(slotMatch('qf2'));
     const qf3w = winner(slotMatch('qf3')), qf4w = winner(slotMatch('qf4'));
-    if (!qf1w || !qf2w || !qf3w || !qf4w) { toast('Сначала завершите все ЧФ'); return; }
-    const rows = [
-      { match_type: 'sf', slot: 'sf1', round: null, home_id: qf1w, away_id: qf2w, played: false },
-      { match_type: 'sf', slot: 'sf2', round: null, home_id: qf3w, away_id: qf4w, played: false },
-    ];
-    const { error } = await db.from('matches').insert(rows);
-    if (error) { toast('Ошибка создания ПФ'); console.error(error); return; }
+    if (!qf1w || !qf2w || !qf3w || !qf4w) { toast('Сначала завершите все четвертьфиналы'); return; }
+    await db.from('matches').insert([
+      { match_type:'sf', slot:'sf1', round:null, home_id:qf1w, away_id:qf2w, played:false },
+      { match_type:'sf', slot:'sf2', round:null, home_id:qf3w, away_id:qf4w, played:false },
+    ]);
     await loadAll(); toast('Полуфиналы созданы');
   }
 
   async function createFinal() {
     const sf1w = winner(slotMatch('sf1')), sf2w = winner(slotMatch('sf2'));
     if (!sf1w || !sf2w) { toast('Сначала завершите полуфиналы'); return; }
-    const row = { match_type: 'final', slot: 'final', round: null, home_id: sf1w, away_id: sf2w, played: false };
-    const { error } = await db.from('matches').insert([row]);
-    if (error) { toast('Ошибка создания финала'); console.error(error); return; }
+    await db.from('matches').insert([
+      { match_type:'final', slot:'final', round:null, home_id:sf1w, away_id:sf2w, played:false },
+    ]);
     await loadAll(); toast('Финал создан!');
   }
 
@@ -995,94 +1114,75 @@
      ========================================================= */
   function exportMatches() {
     const data = matches.map(m => ({
-      match_type: m.match_type, slot: m.slot, round: m.round,
-      home: tName(m.home_id), away: tName(m.away_id),
-      home_goals: m.home_goals, away_goals: m.away_goals, played: m.played,
+      match_type:m.match_type, slot:m.slot, round:m.round,
+      home:tName(m.home_id), away:tName(m.away_id),
+      home_goals:m.home_goals, away_goals:m.away_goals, played:m.played,
     }));
-    downloadJSON(data, 'nml-matches.json');
-    toast('Матчи скачаны');
+    downloadJSON(data, 'nml-matches.json'); toast('Матчи скачаны');
   }
 
   async function importMatches(file) {
     let data;
     try { data = JSON.parse(await file.text()); } catch { toast('Ошибка чтения JSON'); return; }
     if (!Array.isArray(data) || !data.length) { toast('Файл пуст или неверный формат'); return; }
-
     const nameMap = {};
     teams.forEach(t => { nameMap[t.name.toLowerCase()] = t.id; });
-
     const missing = new Set();
     data.forEach(m => {
       if (!nameMap[(m.home||'').toLowerCase()]) missing.add(m.home);
       if (!nameMap[(m.away||'').toLowerCase()]) missing.add(m.away);
     });
     if (missing.size) { toast('Не найдены команды: ' + [...missing].join(', ')); return; }
-
-    if (!confirm(`Импорт ${data.length} матчей. Все текущие матчи будут заменены. Продолжить?`)) return;
-
+    if (!confirm(`Импорт ${data.length} матчей. Текущие матчи будут заменены. Продолжить?`)) return;
     await db.from('matches').delete().gt('id', 0);
-
     const rows = data.map(m => ({
-      match_type: m.match_type || 'group', slot: m.slot || null, round: m.round || null,
-      home_id: nameMap[m.home.toLowerCase()], away_id: nameMap[m.away.toLowerCase()],
-      home_goals: m.played !== false && m.home_goals != null ? m.home_goals : null,
-      away_goals: m.played !== false && m.away_goals != null ? m.away_goals : null,
-      played:     m.played !== false && m.home_goals != null && m.away_goals != null,
+      match_type:m.match_type||'group', slot:m.slot||null, round:m.round||null,
+      home_id:nameMap[m.home.toLowerCase()], away_id:nameMap[m.away.toLowerCase()],
+      home_goals: m.played!==false&&m.home_goals!=null ? m.home_goals : null,
+      away_goals: m.played!==false&&m.away_goals!=null ? m.away_goals : null,
+      played:     m.played!==false&&m.home_goals!=null&&m.away_goals!=null,
     }));
-
-    const { error } = await db.from('matches').insert(rows);
-    if (error) { toast('Ошибка импорта матчей'); console.error(error); return; }
-    await loadAll();
-    toast('Импортировано ' + rows.length + ' матчей');
+    await db.from('matches').insert(rows);
+    await loadAll(); toast('Импортировано ' + rows.length + ' матчей');
   }
 
   function exportTable() {
     const st = customTable || getStandings();
-    const data = st.map((r, i) => ({
-      pos: i+1, name: r.name, p: r.p, w: r.w, d: r.d, l: r.l,
-      gs: r.gs, gc: r.gc, gd: r.gd != null ? r.gd : r.gs - r.gc, pts: r.pts,
+    const data = st.map((r,i) => ({
+      pos:i+1, name:r.name, p:r.p, w:r.w, d:r.d, l:r.l,
+      gs:r.gs, gc:r.gc, gd:r.gd!=null?r.gd:r.gs-r.gc, pts:r.pts,
     }));
-    downloadJSON(data, 'nml-table.json');
-    toast('Таблица скачана');
+    downloadJSON(data, 'nml-table.json'); toast('Таблица скачана');
   }
 
   async function importTable(file) {
     let data;
     try { data = JSON.parse(await file.text()); } catch { toast('Ошибка чтения JSON'); return; }
     if (!Array.isArray(data) || !data.length) { toast('Файл пуст или неверный формат'); return; }
-
     const teamMap = {};
     teams.forEach(t => { teamMap[t.name.toLowerCase()] = t.name; });
-
     const missing = [];
     customTable = data.map(r => {
       const realName = teamMap[r.name.toLowerCase()];
       if (!realName) missing.push(r.name);
-      return { name: realName || r.name, p: r.p, w: r.w, d: r.d, l: r.l, gs: r.gs, gc: r.gc, gd: r.gd != null ? r.gd : r.gs - r.gc, pts: r.pts };
+      return { name:realName||r.name, p:r.p, w:r.w, d:r.d, l:r.l, gs:r.gs, gc:r.gc, gd:r.gd!=null?r.gd:r.gs-r.gc, pts:r.pts };
     });
-
-    if (missing.length) { toast('Не найдены команды: ' + missing.join(', ')); customTable = null; return; }
-
-    customTable.sort((a,b) => b.pts - a.pts || b.gd - a.gd || b.gs - a.gs || a.name.localeCompare(b.name));
-
-    await db.from('settings').upsert({ key: 'custom_table', value: JSON.stringify(customTable) });
-    render();
-    toast('Таблица загружена');
+    if (missing.length) { toast('Не найдены команды: ' + missing.join(', ')); customTable=null; return; }
+    customTable.sort((a,b) => b.pts-a.pts||b.gd-a.gd||b.gs-a.gs||a.name.localeCompare(b.name));
+    await db.from('settings').upsert({ key:'custom_table', value:JSON.stringify(customTable) });
+    render(); toast('Таблица загружена');
   }
 
   async function clearCustomTable() {
     customTable = null;
-    await db.from('settings').delete().eq('key', 'custom_table');
-    render();
-    toast('Загруженная таблица сброшена');
+    await db.from('settings').delete().eq('key','custom_table');
+    render(); toast('Загруженная таблица сброшена');
   }
 
   function downloadJSON(data, filename) {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
+    a.href = URL.createObjectURL(blob); a.download = filename; a.click();
     URL.revokeObjectURL(a.href);
   }
 
@@ -1093,20 +1193,18 @@
     const lockBtn = document.getElementById('lockBtn');
     const codeBox = document.getElementById('codeBox');
     const codeInp = document.getElementById('adminCode');
-
     lockBtn.addEventListener('click', () => {
       if (isAdmin) { logout(); return; }
       const show = codeBox.hidden;
       codeBox.hidden = !show;
       if (show) { codeInp.value = ''; codeInp.focus(); }
     });
-
     codeInp.addEventListener('keydown', e => {
       if (e.key === 'Enter') {
-        if (codeInp.value === ADMIN_CODE) { login(); }
+        if (codeInp.value === ADMIN_CODE) login();
         else { toast('Неверный код'); codeInp.value = ''; }
       }
-      if (e.key === 'Escape') { codeBox.hidden = true; }
+      if (e.key === 'Escape') codeBox.hidden = true;
     });
   }
 
@@ -1130,8 +1228,7 @@
 
   function applyAdminMode() {
     document.body.classList.toggle('admin-mode', isAdmin);
-    const adminTabBtn = document.querySelector('.nav-btn[data-tab="admin"]');
-    adminTabBtn.style.display = isAdmin ? '' : 'none';
+    document.querySelector('.nav-btn[data-tab="admin"]').style.display = isAdmin ? '' : 'none';
     document.getElementById('lockBtn').textContent = isAdmin ? '🔓' : '🔒';
     document.getElementById('lockBtn').title = isAdmin ? 'Выйти из админ-режима' : 'Вход для администратора';
     document.getElementById('adminBadge').hidden = !isAdmin;
@@ -1158,7 +1255,6 @@
     document.getElementById('generateBtn').addEventListener('click', generateSchedule);
     document.getElementById('resetBtn').addEventListener('click', resetData);
     document.getElementById('addMatchBtn')?.addEventListener('click', addManualMatch);
-
     document.getElementById('exportMatchesBtn').addEventListener('click', exportMatches);
     document.getElementById('importMatchesFile').addEventListener('change', e => {
       if (e.target.files[0]) { importMatches(e.target.files[0]); e.target.value = ''; }
@@ -1171,53 +1267,24 @@
   }
 
   /* =========================================================
-     MODAL LISTENERS
-     ========================================================= */
-  function initModal() {
-    document.getElementById('modalSave').addEventListener('click', saveModal);
-    document.getElementById('modalClear').addEventListener('click', clearModal);
-    document.getElementById('modalCancel').addEventListener('click', closeModal);
-    document.getElementById('modal').addEventListener('click', e => {
-      if (e.target.id === 'modal') closeModal();
-    });
-    document.getElementById('modalHomeGoals').addEventListener('keydown', e => {
-      if (e.key === 'Enter') saveModal();
-      // update mismatch warning on change
-    });
-    document.getElementById('modalAwayGoals').addEventListener('keydown', e => {
-      if (e.key === 'Enter') saveModal();
-    });
-    // Update mismatch warn when score changes
-    ['modalHomeGoals', 'modalAwayGoals'].forEach(id => {
-      document.getElementById(id).addEventListener('input', () => {
-        const m = matches.find(x => x.id === modalMatchId);
-        if (m && !document.getElementById('goalScorersPanel').hidden) updateGoalChips(m);
-      });
-    });
-  }
-
-  /* =========================================================
      GOOGLE SHEETS SYNC
      ========================================================= */
   async function syncToSheets() {
     try {
       const standings = getStandings();
       const played = matches.filter(m => m.played).map(m => ({
-        type: m.match_type, round: m.round,
-        home: tName(m.home_id), homeGoals: m.home_goals,
-        awayGoals: m.away_goals, away: tName(m.away_id),
+        type:m.match_type, round:m.round,
+        home:tName(m.home_id), homeGoals:m.home_goals,
+        awayGoals:m.away_goals, away:tName(m.away_id),
       }));
-      const order = { group: 0, qual: 1, qf: 2, sf: 3, final: 4 };
-      played.sort((a,b) => (order[a.type]||0) - (order[b.type]||0) || (a.round||0) - (b.round||0));
+      const order = { group:0, qual:1, qf:2, sf:3, final:4 };
+      played.sort((a,b) => (order[a.type]||0)-(order[b.type]||0)||(a.round||0)-(b.round||0));
       const res = await fetch('/api/sheets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ standings, matches: played }),
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ standings, matches:played }),
       });
       if (!res.ok) console.warn('Sheets sync failed:', await res.text());
-    } catch (e) {
-      console.warn('Sheets sync error:', e);
-    }
+    } catch (e) { console.warn('Sheets sync error:', e); }
   }
 
   /* =========================================================
@@ -1229,46 +1296,66 @@
     return t ? t.name : '???';
   }
 
+  /** "Иванов Александр" → "Иванов А." */
+  function shortName(fullName) {
+    if (!fullName) return '?';
+    const parts = String(fullName).trim().split(/\s+/);
+    if (parts.length === 1) return parts[0];
+    return parts[0] + ' ' + parts[1][0] + '.';
+  }
+
+  /** Shorten team name for tabs (max 10 chars) */
+  function shortTeamLabel(name) {
+    if (!name) return '?';
+    return name.length > 10 ? name.slice(0, 9) + '…' : name;
+  }
+
   function esc(s) {
     if (!s) return '';
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   let toastTimer;
   function toast(msg) {
     const el = document.getElementById('toast');
-    el.textContent = msg;
-    el.hidden = false;
+    el.textContent = msg; el.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { el.hidden = true; }, 2800);
   }
 
   /* =========================================================
-     PUBLIC API
+     PUBLIC API (called from inline HTML onclick)
      ========================================================= */
   window.NML = {
-    open:               openModal,
-    rename:             renameTeam,
-    createQual:         createQual,
-    createQF:           createQF,
-    createSF:           createSF,
-    createFinal:        createFinal,
-    logout:             logout,
-    exportMatches:      exportMatches,
-    exportTable:        exportTable,
-    clearCustomTable:   clearCustomTable,
+    open:             openModal,
+    rename:           renameTeam,
+    createQual:       createQual,
+    createQF:         createQF,
+    createSF:         createSF,
+    createFinal:      createFinal,
+    logout:           logout,
+    exportMatches:    exportMatches,
+    exportTable:      exportTable,
+    clearCustomTable: clearCustomTable,
     // Team modal
-    openTeam:           openTeamModal,
-    closeTeam:          closeTeamModal,
-    toggleAddPlayer:    toggleAddPlayerForm,
-    addPlayer:          addPlayer,
-    removePlayer:       removePlayer,
-    promptLogoUpload:   promptLogoUpload,
-    // Goal scorers
-    addGoal:            addGoalToModal,
-    removeGoal:         removeGoalFromModal,
-    // Players tab
-    filterPlayers:      (v) => { playerFilter = v || ''; renderPlayersTab(); },
+    openTeam:         openTeamModal,
+    closeTeam:        closeTeamModal,
+    toggleAddPlayer:  toggleAddPlayerForm,
+    addPlayer:        addPlayer,
+    removePlayer:     removePlayer,
+    promptLogoUpload: promptLogoUpload,
+    // Match modal
+    saveModal:        saveModal,
+    clearModal:       clearModal,
+    closeModal:       closeModal,
+    setGoalSide:      setGoalSide,
+    addGoalEvent:     addGoalEvent,
+    removeGoal:       removeGoalFromModal,
+    onOGChange:       onOGChange,
+    // Players tab filter
+    filterPlayers:    (v) => { playerFilter = v || ''; renderPlayersTab(); },
   };
 
 })();
