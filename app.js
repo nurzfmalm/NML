@@ -186,10 +186,11 @@
       const gdStr = gd > 0 ? '+' + gd : gd;
       const tid   = r.id || (teams.find(t => t.name === r.name) || {}).id;
       const logo  = teamLogoHTML(tid);
-      const click = tid ? `onclick="NML.openTeam(${tid})"` : '';
+      const click = (tid && isAdmin) ? `onclick="NML.openTeam(${tid})"` : '';
+      const cursorStyle = (tid && isAdmin) ? '' : 'style="cursor:default"';
       return `<tr class="${cls}">
         <td class="col-pos">${pos}</td>
-        <td class="col-team" ${click}>
+        <td class="col-team" ${click} ${cursorStyle}>
           <div class="team-cell">${logo}<span class="team-cell-name">${esc(r.name)}</span></div>
         </td>
         <td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td>
@@ -486,6 +487,7 @@
      TEAM MODAL
      ========================================================= */
   function openTeamModal(teamId) {
+    if (!isAdmin) return; // только админ может открывать состав
     currentTeamId = teamId;
     renderTeamModal();
     document.getElementById('teamModal').hidden = false;
@@ -556,9 +558,14 @@
   }
 
   function initTeamModal() {
-    // Close on backdrop click
-    document.getElementById('teamModal').addEventListener('click', e => {
-      if (e.target.id === 'teamModal') closeTeamModal();
+    // Закрытие по клику на подложку
+    const overlay = document.getElementById('teamModal');
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) closeTeamModal();
+    });
+    // Закрытие по Escape
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !overlay.hidden) closeTeamModal();
     });
     // Logo file input
     document.getElementById('tmLogoInput').addEventListener('change', async e => {
