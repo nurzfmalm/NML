@@ -23,7 +23,9 @@
   let isAdmin     = sessionStorage.getItem('nml_admin') === '1';
   let customTable = null;
 
-  let currentTeamId = null;
+  let currentTeamId  = null;
+  let currentTeamTab = 'roster'; // 'roster' | 'matches'
+  let expandedPlayerId = null;
 
   // Match modal state
   let modalMatchId = null;
@@ -177,8 +179,8 @@
       const gdStr = gd > 0 ? '+' + gd : gd;
       const tid   = r.id || (teams.find(t => t.name === r.name) || {}).id;
       const logo  = teamLogoHTML(tid);
-      const click = (tid && isAdmin) ? `onclick="NML.openTeam(${tid})"` : '';
-      const cs    = (tid && isAdmin) ? '' : 'style="cursor:default"';
+      const click = tid ? `onclick="NML.openTeam(${tid})"` : '';
+      const cs    = tid ? 'style="cursor:pointer"' : 'style="cursor:default"';
       return `<tr class="${cls}">
         <td class="col-pos">${pos}</td>
         <td class="col-team" ${click} ${cs}>
@@ -453,10 +455,24 @@
      TEAM MODAL
      ========================================================= */
   function openTeamModal(teamId) {
-    if (!isAdmin) return;
-    currentTeamId = teamId;
+    // All users can view roster; admin can also edit
+    currentTeamId    = teamId;
+    currentTeamTab   = 'roster';
+    expandedPlayerId = null;
     renderTeamModal();
     document.getElementById('teamModal').hidden = false;
+  }
+
+  function switchTeamTab(tab) {
+    currentTeamTab   = tab;
+    expandedPlayerId = null;
+    document.querySelectorAll('.tm-tab-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.tab === tab)
+    );
+    document.getElementById('tmTabRoster').style.display  = tab === 'roster'  ? '' : 'none';
+    document.getElementById('tmTabMatches').style.display = tab === 'matches' ? '' : 'none';
+    if (tab === 'roster')  renderRoster();
+    if (tab === 'matches') renderTeamMatches();
   }
 
   function closeTeamModal() {
@@ -473,30 +489,159 @@
     if (t.logo) { img.src = t.logo; img.hidden = false; ph.hidden = true; }
     else        { img.hidden = true;  ph.hidden = false; }
 
-    const st       = getStandings().find(r => r.id === currentTeamId) || {};
+    const st        = getStandings().find(r => r.id === currentTeamId) || {};
     const teamGoals = goals.filter(g => g.team_id === currentTeamId && !g.is_own_goal).length;
     const pCount    = players.filter(p => p.team_id === currentTeamId).length;
+    const mPlayed   = matches.filter(m =>
+      m.played && (m.home_id === currentTeamId || m.away_id === currentTeamId)
+    ).length;
+
     document.getElementById('tmMeta').innerHTML =
       `<span class="meta-item">📋 ${pCount} игрок${pCount===1?'':pCount<5?'а':'ов'}</span>` +
+      `<span class="meta-item">🏟 ${mPlayed} матч${mPlayed===1?'':mPlayed<5&&mPlayed>1?'а':'ей'}</span>` +
       (st.pts != null ? `<span class="meta-item">🏆 ${st.pts} очков</span>` : '') +
       `<span class="meta-item">⚽ ${teamGoals} гол${teamGoals===1?'':teamGoals<5&&teamGoals>1?'а':'ов'}</span>`;
+
+    // Render tab bar into body placeholder
+    const bodyEl = document.getElementById('tmTabsBody');
+    if (bodyEl) {
+      const addBtn = isAdmin
+        ? `<button class="btn-add-player" onclick="NML.toggleAddPlayer()">+ Игрок</button>`
+        : '';
+      bodyEl.innerHTML = `
+        <div class="tm-tab-bar">
+          <button class="tm-tab-btn active" data-tab="roster"  onclick="NML.switchTab('roster')">👥 Состав</button>
+          <button class="tm-tab-btn"        data-tab="matches" onclick="NML.switchTab('matches')">🏟 Матчи</button>
+          <span class="tm-tab-spacer"></span>
+          ${addBtn}
+        </div>
+        <div id="tmTabRoster"></div>
+        <div id="tmTabMatches" style="display:none"></div>`;
+    }
     renderRoster();
+  }
+
+  /* ── Team matches tab ── */
+  function renderTeamMatches() {
+    const el = document.getElementById('tmTabMatches');
+    if (!el) return;
+
+    const teamMatches = matches.filter(m =>
+      m.played && (m.home_id === currentTeamId || m.away_id === currentTeamId)
+    ).sort((a,b) => {
+      // Sort: group by round first, then playoff stages
+      const order = { group:0, qual:1, qf:2, sf:3, final:4 };
+      const oa = order[a.match_type] ?? 0, ob = order[b.match_type] ?? 0;
+      if (oa !== ob) return oa - ob;
+      return (a.round||0) - (b.round||0);
+    });
+
+    if (!teamMatches.length) {
+      el.innerHTML = '<div class="no-players-msg">Сыгранных матчей пока нет</div>';
+      return;
+    }
+
+    const rows = teamMatches.map(m => {
+      const isHome   = m.home_id === currentTeamId;
+      const oppId    = isHome ? m.away_id : m.home_id;
+      const myG      = isHome ? m.home_goals : m.away_goals;
+      const oppG     = isHome ? m.away_goals : m.home_goals;
+      const won      = myG > oppG, drew = myG === oppG, lost = myG < oppG;
+      const resCls   = m.is_technical
+        ? 'tm-res tp'
+        : (won ? 'tm-res win' : drew ? 'tm-res draw' : 'tm-res loss');
+      const resTxt   = m.is_technical
+        ? 'ТП'
+        : (won ? 'П' : drew ? 'Н' : 'П');
+      // Won label: В (win), Н (draw), П (loss)
+      const resultLabel = m.is_technical
+        ? 'ТП'
+        : (won ? 'В' : drew ? 'Н' : 'П');
+      const resBadgeCls = m.is_technical ? 'tm-res tp' : (won ? 'tm-res win' : drew ? 'tm-res draw' : 'tm-res loss');
+
+      const oppTeam = teams.find(x => x.id === oppId) || {};
+      const oppLogo = oppTeam.logo
+        ? `<img src="${esc(oppTeam.logo)}" class="team-logo-sm" alt="">`
+        : `<span class="team-logo-placeholder-sm">⚽</span>`;
+      const homeAway = isHome ? '<span class="tm-ha home">Д</span>' : '<span class="tm-ha away">Г</span>';
+
+      // Match label
+      const matchType = { group:'Тур '+m.round, qual:'Стыковые', qf:'Четвертьфинал', sf:'Полуфинал', final:'Финал' };
+      const typeLabel = matchType[m.match_type] || m.match_type;
+
+      // Goals scored by team in this match (non-TP)
+      const matchGoals = m.is_technical ? [] : goals.filter(g =>
+        g.match_id === m.id &&
+        ((g.team_id === currentTeamId && !g.is_own_goal) ||
+         (g.team_id !== currentTeamId && g.is_own_goal))
+      ).sort((a,b) => (a.minute||0) - (b.minute||0));
+
+      const scorers = matchGoals.map(g => {
+        const p = players.find(x => x.id === g.player_id);
+        const name = p ? shortName(p.name) : '?';
+        const min  = g.minute ? `${g.minute}'` : '';
+        const og   = g.is_own_goal ? ' <span style="color:var(--red);font-size:.68rem">АГ</span>' : '';
+        return `<span class="tm-match-scorer">${esc(name)}${og}${min ? ` <span style="opacity:.5">${min}</span>` : ''}</span>`;
+      }).join('');
+
+      return `<div class="tm-match-row">
+        <div class="tm-match-left">
+          <span class="${resBadgeCls}">${resultLabel}</span>
+          ${homeAway}
+        </div>
+        <div class="tm-match-center">
+          <div class="tm-match-opp">${oppLogo}<span class="tm-opp-name">${esc(oppTeam.name || '?')}</span></div>
+          <div class="tm-match-score-line">
+            <span class="tm-score">${myG} : ${oppG}</span>
+            <span class="tm-match-type">${esc(typeLabel)}</span>
+          </div>
+          ${scorers ? `<div class="tm-match-scorers">${scorers}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+
+    el.innerHTML = rows;
   }
 
   function renderRoster() {
     const roster = players.filter(p => p.team_id === currentTeamId)
       .sort((a,b) => (a.number||999) - (b.number||999) || (a.name||'').localeCompare(b.name||''));
 
-    const goalMap = {};
-    goals.forEach(g => {
-      if (g.player_id && !g.is_own_goal) goalMap[g.player_id] = (goalMap[g.player_id] || 0) + 1;
-    });
+    // Per-player: goals, assists, and list of non-TP matches they scored in
+    const goalMap   = {};
     const assistMap = {};
+    const goalEvents= {}; // playerId -> [{match_id, minute, is_own_goal, assist_name}]
+
     goals.forEach(g => {
-      if (g.assist_player_id) assistMap[g.assist_player_id] = (assistMap[g.assist_player_id] || 0) + 1;
+      // Skip own-goal for scorer stats
+      if (g.player_id && !g.is_own_goal) {
+        const m = matches.find(x => x.id === g.match_id);
+        if (m && !m.is_technical) {
+          goalMap[g.player_id] = (goalMap[g.player_id] || 0) + 1;
+          if (!goalEvents[g.player_id]) goalEvents[g.player_id] = [];
+          const ap = g.assist_player_id ? players.find(x => x.id === g.assist_player_id) : null;
+          goalEvents[g.player_id].push({
+            match_id:    m.id,
+            match_type:  m.match_type,
+            round:       m.round,
+            home_id:     m.home_id,
+            away_id:     m.away_id,
+            home_goals:  m.home_goals,
+            away_goals:  m.away_goals,
+            minute:      g.minute,
+            assist_name: ap ? ap.name : null,
+          });
+        }
+      }
+      if (g.assist_player_id) {
+        const m = matches.find(x => x.id === g.match_id);
+        if (m && !m.is_technical) {
+          assistMap[g.assist_player_id] = (assistMap[g.assist_player_id] || 0) + 1;
+        }
+      }
     });
 
-    const el = document.getElementById('tmRoster');
+    const el = document.getElementById('tmTabRoster');
     if (!roster.length) {
       el.innerHTML = `<div class="no-players-msg">
         👥 Состав пока не добавлен${isAdmin ? '<br><small>Нажмите «+ Игрок», чтобы добавить</small>' : ''}
@@ -508,17 +653,94 @@
       const g    = goalMap[p.id]   || 0;
       const a    = assistMap[p.id] || 0;
       const gCls = g ? '' : ' zero';
+      const isExpanded = expandedPlayerId === p.id;
+
       const assistBadge = a > 0
-        ? `<span class="player-goals-badge" style="background:rgba(255,255,255,.15);color:rgba(255,255,255,.75)" title="Ассистов">👟 ${a}</span>`
+        ? `<span class="player-stat-badge assist" title="Ассистов">👟 ${a}</span>`
         : '';
-      return `<div class="player-item">
-        <span class="player-num">${p.number ? '#' + p.number : '—'}</span>
-        <span class="player-name">${esc(p.name)}</span>
-        <span class="player-goals-badge${gCls}">⚽ ${g}</span>
-        ${assistBadge}
-        <button class="btn-remove-player" onclick="NML.removePlayer(${p.id})" title="Удалить игрока">✕</button>
+
+      // Detail section
+      let detailHTML = '';
+      if (isExpanded) {
+        const evts = goalEvents[p.id] || [];
+        // Group by match
+        const matchGroups = {};
+        evts.forEach(e => {
+          const key = e.match_id;
+          if (!matchGroups[key]) matchGroups[key] = { ...e, minutes: [] };
+          matchGroups[key].minutes.push({ minute: e.minute, assist: e.assist_name });
+        });
+        const matchTypes = { group:'Тур', qual:'Стыковые', qf:'ЧФ', sf:'ПФ', final:'Финал' };
+        const matchRows = Object.values(matchGroups).map(mg => {
+          const isHome  = mg.home_id === currentTeamId;
+          const oppId   = isHome ? mg.away_id : mg.home_id;
+          const oppTeam = teams.find(x => x.id === oppId) || {};
+          const myG     = isHome ? mg.home_goals : mg.away_goals;
+          const oppG    = isHome ? mg.away_goals : mg.home_goals;
+          const won     = myG > oppG, drew = myG === oppG;
+          const resCls  = won ? 'pr-res win' : drew ? 'pr-res draw' : 'pr-res loss';
+          const resTxt  = won ? 'В' : drew ? 'Н' : 'П';
+          const typeTag = mg.match_type === 'group'
+            ? `${matchTypes.group} ${mg.round}`
+            : (matchTypes[mg.match_type] || mg.match_type);
+          const goalsThisMatch = mg.minutes.map(gm => {
+            const min  = gm.minute ? `<span class="pr-min">${gm.minute}'</span>` : '';
+            const ass  = gm.assist ? `<span class="pr-assist">(${esc(shortName(gm.assist))})</span>` : '';
+            return `<span class="pr-goal-event">⚽${min}${ass}</span>`;
+          }).join('');
+          const haLbl = isHome
+            ? '<span class="tm-ha home" style="font-size:.63rem;padding:1px 4px">Д</span>'
+            : '<span class="tm-ha away" style="font-size:.63rem;padding:1px 4px">Г</span>';
+          return `<div class="pr-match-row">
+            <span class="${resCls}">${resTxt}</span>
+            ${haLbl}
+            <span class="pr-opp">${esc(oppTeam.name || '?')}</span>
+            <span class="pr-score">${myG}:${oppG}</span>
+            <span class="pr-type">${esc(typeTag)}</span>
+            <div class="pr-goals">${goalsThisMatch}</div>
+          </div>`;
+        });
+
+        const noGoals = !evts.length
+          ? '<div style="opacity:.4;font-size:.8rem;padding:8px 0">Голов ещё нет</div>'
+          : '';
+
+        const totalMatches = new Set(evts.map(e => e.match_id)).size;
+        detailHTML = `<div class="player-detail-box">
+          <div class="pd-summary">
+            <span class="pd-stat">⚽ ${g} гол${g===1?'':g<5&&g>1?'а':'ов'}</span>
+            <span class="pd-sep">·</span>
+            <span class="pd-stat">👟 ${a} ассист${a===1?'':a<5&&a>1?'а':'ов'}</span>
+            <span class="pd-sep">·</span>
+            <span class="pd-stat">🏟 ${totalMatches} матч${totalMatches===1?'':totalMatches<5&&totalMatches>1?'а':'ей'} с голами</span>
+          </div>
+          ${noGoals}
+          ${matchRows.join('')}
+        </div>`;
+      }
+
+      const hasStats = g > 0 || a > 0;
+      const chevron  = hasStats ? `<span class="player-chevron ${isExpanded?'open':''}">${isExpanded?'▲':'▼'}</span>` : '';
+      const clickHandler = hasStats ? `onclick="NML.togglePlayer(${p.id})"` : '';
+      const clickCursor  = hasStats ? 'style="cursor:pointer"' : '';
+
+      return `<div class="player-item-wrap">
+        <div class="player-item ${isExpanded?'expanded':''}" ${clickHandler} ${clickCursor}>
+          <span class="player-num">${p.number ? '#' + p.number : '—'}</span>
+          <span class="player-name">${esc(p.name)}</span>
+          <span class="player-stat-badge goal${gCls}">⚽ ${g}</span>
+          ${assistBadge}
+          ${chevron}
+          <button class="btn-remove-player" onclick="event.stopPropagation();NML.removePlayer(${p.id})" title="Удалить игрока">✕</button>
+        </div>
+        ${detailHTML}
       </div>`;
     }).join('');
+  }
+
+  function togglePlayerExpand(playerId) {
+    expandedPlayerId = expandedPlayerId === playerId ? null : playerId;
+    renderRoster();
   }
 
   function initTeamModal() {
@@ -1434,6 +1656,8 @@
     // Team modal
     openTeam:         openTeamModal,
     closeTeam:        closeTeamModal,
+    switchTab:        switchTeamTab,
+    togglePlayer:     togglePlayerExpand,
     toggleAddPlayer:  toggleAddPlayerForm,
     addPlayer:        addPlayer,
     removePlayer:     removePlayer,
