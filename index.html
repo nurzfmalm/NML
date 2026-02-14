@@ -152,6 +152,57 @@
     .btn-sm-ghost:hover  { background:rgba(255,255,255,.08);color:#fff; }
     .btn-sm-accent { background:var(--accent,#d4a017);border:none;color:#0a0e1a;padding:6px 12px;border-radius:7px;font-size:.82rem;cursor:pointer;transition:opacity .12s;font-weight:700; }
     .btn-sm-accent:hover { opacity:.85; }
+
+    /* ── Technical Defeat (ТП) ── */
+    /* Match card badge */
+    .match-tp-badge {
+      display:inline-block;
+      font-size:.65rem;font-weight:800;letter-spacing:.04em;
+      padding:2px 6px;border-radius:6px;
+      background:rgba(239,68,68,.18);color:#ef4444;
+      border:1px solid rgba(239,68,68,.35);
+      margin-left:4px;vertical-align:middle;
+    }
+    /* Match card tinted border */
+    .match-card.tp { border-left-color:#ef4444 !important; }
+
+    /* Admin modal toggle row */
+    .tp-toggle-row {
+      display:flex;justify-content:center;
+      margin-bottom:10px;
+    }
+    .tp-toggle-label {
+      display:inline-flex;align-items:center;gap:8px;
+      padding:8px 14px;border-radius:10px;cursor:pointer;
+      background:rgba(239,68,68,.08);
+      border:1px solid rgba(239,68,68,.2);
+      font-size:.85rem;font-weight:600;color:rgba(255,255,255,.8);
+      transition:all .15s;user-select:none;
+    }
+    .tp-toggle-label:hover { background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.4); }
+    .tp-toggle-label input { accent-color:#ef4444;width:15px;height:15px; }
+    .tp-toggle-text { color:#ef4444; }
+
+    /* TP loser row */
+    .tp-loser-row {
+      display:flex;align-items:center;gap:10px;
+      margin:0 0 12px;padding:10px 14px;
+      background:rgba(239,68,68,.06);
+      border:1px solid rgba(239,68,68,.2);
+      border-radius:10px;
+    }
+    .tp-loser-label { font-size:.82rem;font-weight:600;color:rgba(255,255,255,.7);white-space:nowrap; }
+
+    /* Non-admin view banner */
+    .view-tp-banner {
+      text-align:center;
+      padding:10px 16px;margin-bottom:12px;
+      background:rgba(239,68,68,.1);
+      border:1px solid rgba(239,68,68,.25);
+      border-radius:10px;
+      font-size:.85rem;font-weight:700;color:#ef4444;
+      letter-spacing:.03em;
+    }
   </style>
 </head>
 <body>

@@ -16,7 +16,7 @@
      IN-MEMORY STATE
      ========================================================= */
   let teams       = [];   // [{id, name, sort_order, logo}]
-  let matches     = [];   // [{id, match_type, slot, round, home_id, away_id, home_goals, away_goals, played}]
+  let matches     = [];   // [{id, match_type, slot, round, home_id, away_id, home_goals, away_goals, played, is_technical}]
   let settings    = {};
   let players     = [];   // [{id, team_id, name, number, sort_order}]
   let goals       = [];   // [{id, match_id, player_id, team_id, minute, assist_player_id, is_own_goal}]
@@ -215,13 +215,14 @@
   function matchCardHTML(m) {
     const hName  = tName(m.home_id), aName = tName(m.away_id);
     const score  = m.played ? `${m.home_goals} : ${m.away_goals}` : '— : —';
-    const pCls   = m.played ? ' played' : '';
+    const pCls   = m.played ? (m.is_technical ? ' played tp' : ' played') : '';
     const hW     = m.played && m.home_goals > m.away_goals ? ' match-winner' : '';
     const aW     = m.played && m.away_goals > m.home_goals ? ' match-winner' : '';
     const hLogo  = teamLogoHTML(m.home_id);
     const aLogo  = teamLogoHTML(m.away_id);
     const gCount = goals.filter(g => g.match_id === m.id).length;
-    const gTag   = (m.played && gCount > 0) ? `<span class="match-goal-count">⚽ ${gCount}</span>` : '';
+    const gTag   = (m.played && gCount > 0 && !m.is_technical) ? `<span class="match-goal-count">⚽ ${gCount}</span>` : '';
+    const tpTag  = m.is_technical ? `<span class="match-tp-badge">ТП</span>` : '';
 
     // Clickable for admin always; for non-admin only if match is played
     const clickable = isAdmin || m.played;
@@ -230,7 +231,7 @@
 
     return `<div class="match-card${pCls}" ${onclick} ${cursor}>
       <span class="match-home${hW}">${hLogo}${esc(hName)}</span>
-      <span class="match-score">${score}${gTag}</span>
+      <span class="match-score">${score}${tpTag}${gTag}</span>
       <span class="match-away${aW}">${esc(aName)}${aLogo}</span></div>`;
   }
 
@@ -650,31 +651,94 @@
     const title = isKO ? 'Результат (плей-офф — ничья невозможна)' : 'Результат матча';
     const hg    = m.played ? m.home_goals : 0;
     const ag    = m.played ? m.away_goals : 0;
+    const isTp  = m.is_technical || false;
     const clearBtn = m.played
       ? `<button onclick="NML.clearModal()" class="btn-secondary">Очистить</button>` : '';
 
     const hasPlayers = players.some(p => p.team_id === m.home_id || p.team_id === m.away_id);
+    // goalSection shown only when not technical
     const goalSection = hasPlayers ? buildGoalEntrySection(m) : '';
+
+    const tpChecked = isTp ? 'checked' : '';
+    // Which team got TP: the one with 0 goals (or home by default on new entry)
+    const tpLoserDefault = (isTp && m.home_goals === 0) ? m.home_id : (isTp ? m.away_id : m.home_id);
+    const tpOptions = [
+      `<option value="${m.home_id}" ${tpLoserDefault === m.home_id ? 'selected' : ''}>${esc(tName(m.home_id))}</option>`,
+      `<option value="${m.away_id}" ${tpLoserDefault === m.away_id ? 'selected' : ''}>${esc(tName(m.away_id))}</option>`,
+    ].join('');
 
     return `
       <h3 style="text-align:center;margin-bottom:18px;font-size:1.1rem">${esc(title)}</h3>
-      <div class="modal-match">
+
+      <!-- Technical defeat toggle -->
+      <div class="tp-toggle-row" id="tpToggleRow">
+        <label class="tp-toggle-label">
+          <input type="checkbox" id="tpCheck" ${tpChecked} onchange="NML.onTpChange()">
+          <span class="tp-toggle-text">⚠️ Техническое поражение</span>
+        </label>
+      </div>
+      <!-- TP loser selector (shown when TP checked) -->
+      <div id="tpLoserRow" class="tp-loser-row" style="display:${isTp ? 'flex' : 'none'}">
+        <span class="tp-loser-label">Проигравшая команда:</span>
+        <select id="tpLoser" class="ge-select" style="min-width:160px">${tpOptions}</select>
+      </div>
+
+      <div class="modal-match" id="scoreRow">
         <div class="modal-team">
           <span id="adminHomeName">${esc(tName(m.home_id))}</span>
-          <input type="number" id="adminHomeGoals" min="0" value="${hg}">
+          <input type="number" id="adminHomeGoals" min="0" value="${hg}" ${isTp ? 'disabled' : ''}>
         </div>
         <span class="modal-vs">:</span>
         <div class="modal-team">
-          <input type="number" id="adminAwayGoals" min="0" value="${ag}">
+          <input type="number" id="adminAwayGoals" min="0" value="${ag}" ${isTp ? 'disabled' : ''}>
           <span id="adminAwayName">${esc(tName(m.away_id))}</span>
         </div>
       </div>
-      ${goalSection}
+      <div id="goalEntryWrap">${goalSection}</div>
       <div class="modal-actions" style="margin-top:16px">
         <button onclick="NML.saveModal()" class="btn-accent">Сохранить</button>
         ${clearBtn}
         <button onclick="NML.closeModal()" class="btn-ghost">Отмена</button>
       </div>`;
+  }
+
+  /* ── Technical defeat toggle handler ── */
+  function onTpChange() {
+    const m   = matches.find(x => x.id === modalMatchId);
+    if (!m) return;
+    const isTp = document.getElementById('tpCheck').checked;
+    const loserRow  = document.getElementById('tpLoserRow');
+    const hGoal     = document.getElementById('adminHomeGoals');
+    const aGoal     = document.getElementById('adminAwayGoals');
+    const goalWrap  = document.getElementById('goalEntryWrap');
+
+    loserRow.style.display = isTp ? 'flex' : 'none';
+
+    if (isTp) {
+      // Auto-set score 3:0, disable inputs, hide goal entry
+      const loserId = parseInt(document.getElementById('tpLoser').value);
+      if (loserId === m.home_id) { hGoal.value = 0; aGoal.value = 3; }
+      else                       { hGoal.value = 3; aGoal.value = 0; }
+      hGoal.disabled = true;
+      aGoal.disabled = true;
+      if (goalWrap) goalWrap.style.display = 'none';
+    } else {
+      hGoal.disabled = false;
+      aGoal.disabled = false;
+      if (goalWrap) goalWrap.style.display = '';
+      updateGoalChips();
+    }
+  }
+
+  /* Called when TP loser dropdown changes (so score stays correct) */
+  function onTpLoserChange() {
+    const m   = matches.find(x => x.id === modalMatchId);
+    if (!m) return;
+    const loserId = parseInt(document.getElementById('tpLoser').value);
+    const hGoal   = document.getElementById('adminHomeGoals');
+    const aGoal   = document.getElementById('adminAwayGoals');
+    if (loserId === m.home_id) { hGoal.value = 0; aGoal.value = 3; }
+    else                       { hGoal.value = 3; aGoal.value = 0; }
   }
 
   /* ── Build HTML for goal entry (admin) ── */
@@ -706,6 +770,14 @@
   function initGoalSideTabs(m) {
     goalSide = 'home';
     updateGoalPlayerDropdowns(m);
+    // Wire up TP loser dropdown if present
+    const tpLoserSel = document.getElementById('tpLoser');
+    if (tpLoserSel) tpLoserSel.addEventListener('change', NML_onTpLoserChange);
+    // Hide goal section if technical
+    if (m.is_technical) {
+      const goalWrap = document.getElementById('goalEntryWrap');
+      if (goalWrap) goalWrap.style.display = 'none';
+    }
   }
 
   /* ── Set goal side (home/away) ── */
@@ -862,7 +934,12 @@
     const matchGoals = goals.filter(g => g.match_id === m.id)
       .sort((a,b) => (a.minute||0) - (b.minute||0));
 
-    const goalsHTML = matchGoals.length
+    // Technical defeat banner
+    const tpBanner = m.is_technical
+      ? `<div class="view-tp-banner">⚠️ Техническое поражение</div>`
+      : '';
+
+    const goalsHTML = matchGoals.length && !m.is_technical
       ? matchGoals.map(g => {
           const p   = players.find(x => x.id === g.player_id);
           const ap  = g.assist_player_id ? players.find(x => x.id === g.assist_player_id) : null;
@@ -883,7 +960,7 @@
             ${assistTxt}
           </div>`;
         }).join('')
-      : '<div class="view-no-goals">Авторы голов не указаны</div>';
+      : (m.is_technical ? '' : '<div class="view-no-goals">Авторы голов не указаны</div>');
 
     return `
       <div class="view-match-header">
@@ -893,6 +970,7 @@
           <span>${esc(tName(m.away_id))}</span>
         </div>
       </div>
+      ${tpBanner}
       <div class="view-goals-list">${goalsHTML}</div>
       <div class="view-close-row">
         <button onclick="NML.closeModal()" class="btn-accent">Закрыть</button>
@@ -902,23 +980,34 @@
   /* ── Save match (admin) ── */
   async function saveModal() {
     if (modalMatchId === null) return;
-    const hg = Math.max(0, parseInt((document.getElementById('adminHomeGoals') || {}).value) || 0);
-    const ag = Math.max(0, parseInt((document.getElementById('adminAwayGoals') || {}).value) || 0);
     const m  = matches.find(x => x.id === modalMatchId);
     if (!m) return;
 
-    if (m.match_type !== 'group' && hg === ag) {
-      toast('В плей-офф ничья невозможна!');
-      return;
+    const tpCheckEl = document.getElementById('tpCheck');
+    const isTp      = tpCheckEl ? tpCheckEl.checked : false;
+
+    let hg, ag;
+    if (isTp) {
+      const loserId = parseInt((document.getElementById('tpLoser') || {}).value);
+      hg = loserId === m.home_id ? 0 : 3;
+      ag = loserId === m.home_id ? 3 : 0;
+    } else {
+      hg = Math.max(0, parseInt((document.getElementById('adminHomeGoals') || {}).value) || 0);
+      ag = Math.max(0, parseInt((document.getElementById('adminAwayGoals') || {}).value) || 0);
+      if (m.match_type !== 'group' && hg === ag) {
+        toast('В плей-офф ничья невозможна!');
+        return;
+      }
     }
 
     const { error } = await db.from('matches')
-      .update({ home_goals: hg, away_goals: ag, played: true })
+      .update({ home_goals: hg, away_goals: ag, played: true, is_technical: isTp })
       .eq('id', modalMatchId);
     if (error) { toast('Ошибка сохранения'); console.error(error); return; }
 
+    // No goal events for technical defeats
     await db.from('goals').delete().eq('match_id', modalMatchId);
-    if (modalGoals.length) {
+    if (!isTp && modalGoals.length) {
       const rows = modalGoals.map(g => ({
         match_id:         modalMatchId,
         player_id:        g.player_id,
@@ -933,7 +1022,7 @@
 
     closeModal();
     await loadAll();
-    toast('Результат сохранён');
+    toast(isTp ? 'Техническое поражение сохранено' : 'Результат сохранён');
     syncToSheets();
   }
 
@@ -943,7 +1032,7 @@
     const m = matches.find(x => x.id === modalMatchId);
     if (!m) return;
     await db.from('matches')
-      .update({ home_goals: null, away_goals: null, played: false })
+      .update({ home_goals: null, away_goals: null, played: false, is_technical: false })
       .eq('id', modalMatchId);
     await db.from('goals').delete().eq('match_id', modalMatchId);
     const downstream = { qual:['qf','sf','final'], qf:['sf','final'], sf:['final'] };
@@ -1328,6 +1417,9 @@
   /* =========================================================
      PUBLIC API (called from inline HTML onclick)
      ========================================================= */
+  // Alias needed by initGoalSideTabs which runs before NML is defined
+  function NML_onTpLoserChange() { onTpLoserChange(); }
+
   window.NML = {
     open:             openModal,
     rename:           renameTeam,
@@ -1354,6 +1446,8 @@
     addGoalEvent:     addGoalEvent,
     removeGoal:       removeGoalFromModal,
     onOGChange:       onOGChange,
+    onTpChange:       onTpChange,
+    onTpLoserChange:  onTpLoserChange,
     // Players tab filter
     filterPlayers:    (v) => { playerFilter = v || ''; renderPlayersTab(); },
   };
