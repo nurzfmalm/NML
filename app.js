@@ -34,7 +34,8 @@
   let goalSide     = 'home'; // 'home' | 'away'
 
   let playerFilter = '';
-  let playerSort   = 'goals'; // 'goals'|'assists'|'ga'|'name'|'team'
+  let playerSort   = 'goals'; // 'goals'|'assists'|'ga'
+  let playerSearch = '';
 
   /* =========================================================
      BOOTSTRAP
@@ -249,12 +250,9 @@
 
   /* ── Sort definitions ── */
   const SORT_OPTIONS = [
-    { id: 'goals',   label: '⚽ Голы',        icon: '⚽' },
-    { id: 'assists', label: '👟 Ассисты',     icon: '👟' },
-    { id: 'ga',      label: '🏅 Голы+Ассисты', icon: '🏅' },
-    { id: 'name',    label: '🔤 Имя',          icon: '🔤' },
-    { id: 'team',    label: '🛡 Команда',       icon: '🛡' },
-    { id: 'number',  label: '🔢 Номер',         icon: '🔢' },
+    { id: 'goals',   label: '⚽ Голы' },
+    { id: 'assists', label: '👟 Ассисты' },
+    { id: 'ga',      label: '🏅 Голы + Ассисты' },
   ];
 
   function setPlayerSort(s) {
@@ -278,9 +276,22 @@
         assistMap[g.assist_player_id] = (assistMap[g.assist_player_id] || 0) + 1;
     });
 
-    const allPlayers = players.filter(p =>
-      !playerFilter || String(p.team_id) === String(playerFilter)
-    );
+    const allPlayers = players.filter(p => {
+      if (playerFilter && String(p.team_id) !== String(playerFilter)) return false;
+      if (playerSearch) {
+        const q    = playerSearch.toLowerCase();
+        const name = (p.name || '').toLowerCase();
+        // Tokenise: search as one continuous string and also check each token
+        if (!name.includes(q)) {
+          // Try matching across tokens: "ива ал" should match "Иванов Александр"
+          const tokens = name.split(/\s+/);
+          const joined = tokens.join(''); // "ивановалександр"
+          const qNoSp  = q.replace(/\s+/g, '');
+          if (!joined.includes(qNoSp)) return false;
+        }
+      }
+      return true;
+    });
 
     if (!allPlayers.length) {
       el.innerHTML = `<div class="players-empty">
@@ -295,8 +306,6 @@
     const sorted = [...allPlayers].sort((a, b) => {
       const ga = goalMap[a.id]   || 0, gb = goalMap[b.id]   || 0;
       const aa = assistMap[a.id] || 0, ab = assistMap[b.id] || 0;
-      const teamA = (teams.find(t => t.id === a.team_id) || {}).name || '';
-      const teamB = (teams.find(t => t.id === b.team_id) || {}).name || '';
       switch (playerSort) {
         case 'goals':
           return gb !== ga ? gb - ga : ab - aa || (a.name||'').localeCompare(b.name||'');
@@ -305,24 +314,32 @@
         case 'ga':
           const sumA = ga + aa, sumB = gb + ab;
           return sumB !== sumA ? sumB - sumA : gb - ga || (a.name||'').localeCompare(b.name||'');
-        case 'name':
-          return (a.name||'').localeCompare(b.name||'');
-        case 'team':
-          return teamA.localeCompare(teamB) || (a.name||'').localeCompare(b.name||'');
-        case 'number':
-          return (a.number||999) - (b.number||999) || (a.name||'').localeCompare(b.name||'');
         default:
           return gb - ga;
       }
     });
 
-    /* Sort bar */
-    const sortBar = `<div class="sort-bar" role="group" aria-label="Сортировка">
-      ${SORT_OPTIONS.map(o => `
-        <button class="sort-chip ${playerSort === o.id ? 'active' : ''}"
-          onclick="NML.setSort('${o.id}')" title="${esc(o.label)}">
-          ${esc(o.label)}
-        </button>`).join('')}
+    /* Sort bar + search */
+    const sortBar = `<div class="players-controls">
+      <div class="sort-bar" role="group" aria-label="Сортировка">
+        <span class="sort-label">Сортировка:</span>
+        ${SORT_OPTIONS.map(o => `
+          <button class="sort-chip ${playerSort === o.id ? 'active' : ''}"
+            onclick="NML.setSort('${o.id}')">
+            ${esc(o.label)}
+          </button>`).join('')}
+      </div>
+      <div class="player-search-wrap">
+        <span class="search-icon">🔍</span>
+        <input
+          id="playerSearchInput"
+          class="player-search-input"
+          type="text"
+          placeholder="Поиск по имени или фамилии…"
+          value="${esc(playerSearch)}"
+          oninput="NML.searchPlayers(this.value)">
+        ${playerSearch ? `<button class="search-clear" onclick="NML.searchPlayers('')" title="Очистить">✕</button>` : ''}
+      </div>
     </div>`;
 
     /* Primary stat column depends on sort */
@@ -1742,6 +1759,7 @@
     // Players tab filter
     filterPlayers:    (v) => { playerFilter = v || ''; renderPlayersTab(); },
     setSort:          (s) => setPlayerSort(s),
+    searchPlayers:    (q) => { playerSearch = (q||'').trim(); renderPlayersTab(); },
   };
 
 })();

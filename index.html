@@ -137,20 +137,31 @@
     .scorer-goals-num { font-size:1.2rem;font-weight:800;color:var(--accent,#d4a017);min-width:28px;text-align:center; }
     .scorer-goals-label { font-size:.75rem;opacity:.5; }
     .scorer-assists-col { font-size:.8rem;opacity:.6;min-width:40px;text-align:center; }
-    /* ── Sort bar ── */
-    .sort-bar {
-      display: flex; flex-wrap: wrap; gap: 6px;
+    /* ── Players controls bar (sort + search) ── */
+    .players-controls {
+      display: flex; flex-wrap: wrap;
+      align-items: center; gap: 10px;
       margin-bottom: 16px;
     }
+    .sort-bar {
+      display: flex; flex-wrap: wrap;
+      align-items: center; gap: 6px;
+      flex: 1; min-width: 0;
+    }
+    .sort-label {
+      font-size: .72rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .07em;
+      color: rgba(255,255,255,.3);
+      white-space: nowrap;
+    }
     .sort-chip {
-      padding: 6px 14px;
+      padding: 6px 13px;
       border-radius: 20px;
       border: 1px solid rgba(255,255,255,.12);
       background: rgba(255,255,255,.04);
-      color: rgba(255,255,255,.55);
+      color: rgba(255,255,255,.5);
       font-size: .78rem; font-weight: 700;
-      cursor: pointer; transition: all .15s;
-      letter-spacing: .1px;
+      cursor: pointer; transition: all .14s;
       white-space: nowrap;
     }
     .sort-chip:hover {
@@ -162,7 +173,44 @@
       background: var(--accent,#f5c400);
       border-color: var(--accent,#f5c400);
       color: #08090d;
-      box-shadow: 0 2px 10px rgba(245,196,0,.25);
+      box-shadow: 0 2px 10px rgba(245,196,0,.22);
+    }
+    /* ── Player search ── */
+    .player-search-wrap {
+      position: relative;
+      display: flex; align-items: center;
+      flex: 0 0 auto; width: 240px;
+    }
+    .search-icon {
+      position: absolute; left: 11px;
+      font-size: .85rem; pointer-events: none;
+      opacity: .4;
+    }
+    .player-search-input {
+      width: 100%;
+      padding: 7px 32px 7px 32px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 20px;
+      color: #fff; font-size: .82rem;
+      outline: none; transition: border-color .14s;
+    }
+    .player-search-input:focus {
+      border-color: var(--accent,#f5c400);
+      background: rgba(255,255,255,.07);
+    }
+    .player-search-input::placeholder { color: rgba(255,255,255,.3); }
+    .search-clear {
+      position: absolute; right: 8px;
+      background: none; border: none;
+      color: rgba(255,255,255,.35); font-size: .85rem;
+      cursor: pointer; padding: 2px 4px; line-height: 1;
+      transition: color .12s;
+    }
+    .search-clear:hover { color: rgba(255,255,255,.7); }
+    @media (max-width: 600px) {
+      .players-controls { flex-direction: column; align-items: stretch; }
+      .player-search-wrap { width: 100%; }
     }
 
     /* ── Scorer row overhaul ── */
