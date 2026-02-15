@@ -587,7 +587,28 @@
               <option value="">Все команды</option>
             </select>
           </div>
-          <div id="playersContent"></div>
+
+          <!-- Static controls: never re-rendered, focus safe -->
+          <div class="players-controls">
+            <div class="sort-bar" id="sortBar">
+              <span class="sort-label">Сортировка:</span>
+              <button class="sort-chip active" data-sort="goals"   onclick="NML.setSort('goals')">⚽ Голы</button>
+              <button class="sort-chip"        data-sort="assists" onclick="NML.setSort('assists')">👟 Ассисты</button>
+              <button class="sort-chip"        data-sort="ga"      onclick="NML.setSort('ga')">🏅 Голы + Ассисты</button>
+            </div>
+            <div class="player-search-wrap">
+              <span class="search-icon">🔍</span>
+              <input id="playerSearchInput" class="player-search-input" type="text"
+                placeholder="Поиск по имени или фамилии…"
+                oninput="NML.searchPlayers(this.value)">
+              <button class="search-clear" id="searchClearBtn"
+                onclick="NML.searchPlayers('');document.getElementById('playerSearchInput').value='';this.style.display='none'"
+                style="display:none" title="Очистить">✕</button>
+            </div>
+          </div>
+
+          <!-- Only the list is re-rendered -->
+          <div id="playersList"></div>
         </div>
       </section>
 

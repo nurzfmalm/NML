@@ -249,11 +249,6 @@
   }
 
   /* ── Sort definitions ── */
-  const SORT_OPTIONS = [
-    { id: 'goals',   label: '⚽ Голы' },
-    { id: 'assists', label: '👟 Ассисты' },
-    { id: 'ga',      label: '🏅 Голы + Ассисты' },
-  ];
 
   function setPlayerSort(s) {
     playerSort = s;
@@ -261,8 +256,17 @@
   }
 
   function renderPlayersTab() {
-    const el = document.getElementById('playersContent');
+    const el = document.getElementById('playersList');
     if (!el) return;
+
+    // Update sort chip active states (chips are static DOM, just toggle class)
+    document.querySelectorAll('#sortBar .sort-chip').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.sort === playerSort);
+    });
+
+    // Show/hide search clear button
+    const clearBtn = document.getElementById('searchClearBtn');
+    if (clearBtn) clearBtn.style.display = playerSearch ? '' : 'none';
 
     // Build stats maps (exclude own goals and TP matches)
     const goalMap    = {};
@@ -319,28 +323,7 @@
       }
     });
 
-    /* Sort bar + search */
-    const sortBar = `<div class="players-controls">
-      <div class="sort-bar" role="group" aria-label="Сортировка">
-        <span class="sort-label">Сортировка:</span>
-        ${SORT_OPTIONS.map(o => `
-          <button class="sort-chip ${playerSort === o.id ? 'active' : ''}"
-            onclick="NML.setSort('${o.id}')">
-            ${esc(o.label)}
-          </button>`).join('')}
-      </div>
-      <div class="player-search-wrap">
-        <span class="search-icon">🔍</span>
-        <input
-          id="playerSearchInput"
-          class="player-search-input"
-          type="text"
-          placeholder="Поиск по имени или фамилии…"
-          value="${esc(playerSearch)}"
-          oninput="NML.searchPlayers(this.value)">
-        ${playerSearch ? `<button class="search-clear" onclick="NML.searchPlayers('')" title="Очистить">✕</button>` : ''}
-      </div>
-    </div>`;
+
 
     /* Primary stat column depends on sort */
     const getPrimary = (g, a) => {
@@ -387,7 +370,7 @@
       </div>`;
     }).join('');
 
-    el.innerHTML = sortBar + `<div class="scorers-list">${rows}</div>`;
+    el.innerHTML = `<div class="scorers-list">${rows}</div>`;
   }
 
   /* ---------- Playoff tab ---------- */
