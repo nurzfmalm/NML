@@ -34,6 +34,7 @@
   let goalSide     = 'home'; // 'home' | 'away'
 
   let playerFilter = '';
+  let playerSort   = 'goals'; // 'goals'|'assists'|'ga'|'name'|'team'
 
   /* =========================================================
      BOOTSTRAP
@@ -246,16 +247,35 @@
       teams.map(t => `<option value="${t.id}" ${String(t.id) === current ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
   }
 
+  /* ── Sort definitions ── */
+  const SORT_OPTIONS = [
+    { id: 'goals',   label: '⚽ Голы',        icon: '⚽' },
+    { id: 'assists', label: '👟 Ассисты',     icon: '👟' },
+    { id: 'ga',      label: '🏅 Голы+Ассисты', icon: '🏅' },
+    { id: 'name',    label: '🔤 Имя',          icon: '🔤' },
+    { id: 'team',    label: '🛡 Команда',       icon: '🛡' },
+    { id: 'number',  label: '🔢 Номер',         icon: '🔢' },
+  ];
+
+  function setPlayerSort(s) {
+    playerSort = s;
+    renderPlayersTab();
+  }
+
   function renderPlayersTab() {
     const el = document.getElementById('playersContent');
     if (!el) return;
 
-    // Goal counts (exclude own goals for stats)
-    const goalMap   = {};
-    const assistMap = {};
+    // Build stats maps (exclude own goals and TP matches)
+    const goalMap    = {};
+    const assistMap  = {};
     goals.forEach(g => {
-      if (g.player_id && !g.is_own_goal)     goalMap[g.player_id]   = (goalMap[g.player_id]   || 0) + 1;
-      if (g.assist_player_id)                assistMap[g.assist_player_id] = (assistMap[g.assist_player_id] || 0) + 1;
+      const m = matches.find(x => x.id === g.match_id);
+      if (!m || m.is_technical) return;
+      if (g.player_id && !g.is_own_goal)
+        goalMap[g.player_id]   = (goalMap[g.player_id]   || 0) + 1;
+      if (g.assist_player_id)
+        assistMap[g.assist_player_id] = (assistMap[g.assist_player_id] || 0) + 1;
     });
 
     const allPlayers = players.filter(p =>
@@ -271,11 +291,46 @@
       return;
     }
 
-    const sorted = [...allPlayers].sort((a,b) => {
-      const ga = goalMap[a.id] || 0, gb = goalMap[b.id] || 0;
-      if (gb !== ga) return gb - ga;
-      return (a.name || '').localeCompare(b.name || '');
+    /* Sort */
+    const sorted = [...allPlayers].sort((a, b) => {
+      const ga = goalMap[a.id]   || 0, gb = goalMap[b.id]   || 0;
+      const aa = assistMap[a.id] || 0, ab = assistMap[b.id] || 0;
+      const teamA = (teams.find(t => t.id === a.team_id) || {}).name || '';
+      const teamB = (teams.find(t => t.id === b.team_id) || {}).name || '';
+      switch (playerSort) {
+        case 'goals':
+          return gb !== ga ? gb - ga : ab - aa || (a.name||'').localeCompare(b.name||'');
+        case 'assists':
+          return ab !== aa ? ab - aa : gb - ga || (a.name||'').localeCompare(b.name||'');
+        case 'ga':
+          const sumA = ga + aa, sumB = gb + ab;
+          return sumB !== sumA ? sumB - sumA : gb - ga || (a.name||'').localeCompare(b.name||'');
+        case 'name':
+          return (a.name||'').localeCompare(b.name||'');
+        case 'team':
+          return teamA.localeCompare(teamB) || (a.name||'').localeCompare(b.name||'');
+        case 'number':
+          return (a.number||999) - (b.number||999) || (a.name||'').localeCompare(b.name||'');
+        default:
+          return gb - ga;
+      }
     });
+
+    /* Sort bar */
+    const sortBar = `<div class="sort-bar" role="group" aria-label="Сортировка">
+      ${SORT_OPTIONS.map(o => `
+        <button class="sort-chip ${playerSort === o.id ? 'active' : ''}"
+          onclick="NML.setSort('${o.id}')" title="${esc(o.label)}">
+          ${esc(o.label)}
+        </button>`).join('')}
+    </div>`;
+
+    /* Primary stat column depends on sort */
+    const getPrimary = (g, a) => {
+      if (playerSort === 'assists') return { val: a, label: `ассист${a===1?'':a<5&&a>1?'а':'ов'}` };
+      if (playerSort === 'ga')     return { val: g+a, label: 'очков' };
+      return { val: g, label: `гол${g===1?'':g<5&&g>1?'а':'ов'}` };
+    };
 
     const rows = sorted.map((p, i) => {
       const team    = teams.find(t => t.id === p.team_id) || {};
@@ -286,24 +341,36 @@
         : `<div class="scorer-logo-placeholder">⚽</div>`;
       const rank    = i + 1;
       const rankCls = rank <= 3 ? ' top' : '';
-      const numTxt  = p.number ? ` <span style="opacity:.35;font-weight:400">#${p.number}</span>` : '';
-      const assistTxt = a > 0 ? `<div class="scorer-assists-col" title="Ассистов">👟 ${a}</div>` : '<div class="scorer-assists-col"></div>';
+      const numTxt  = p.number ? ` <span class="player-num-tag">#${p.number}</span>` : '';
+      const primary = getPrimary(g, a);
+
+      /* Secondary stats (the other two) */
+      const secondaries = [];
+      if (playerSort !== 'goals'   && playerSort !== 'ga') secondaries.push(`<span class="sec-stat" title="Голы">⚽ ${g}</span>`);
+      if (playerSort !== 'assists' && playerSort !== 'ga') secondaries.push(`<span class="sec-stat" title="Ассисты">👟 ${a}</span>`);
+      if (playerSort === 'ga') {
+        secondaries.push(`<span class="sec-stat" title="Голы">⚽ ${g}</span>`);
+        secondaries.push(`<span class="sec-stat" title="Ассисты">👟 ${a}</span>`);
+      }
+      const secHTML = secondaries.length
+        ? `<div class="sec-stats-row">${secondaries.join('')}</div>` : '';
+
       return `<div class="scorer-row">
         <div class="scorer-rank${rankCls}">${rank}</div>
         ${logo}
         <div class="scorer-info">
           <div class="scorer-name">${esc(p.name)}${numTxt}</div>
           <div class="scorer-team-name">${esc(team.name || '')}</div>
+          ${secHTML}
         </div>
-        <div class="scorer-goals-col">
-          <span class="scorer-goals-num">${g}</span>
-          <span class="scorer-goals-label">гол${g===1?'':g<5&&g>1?'а':'ов'}</span>
+        <div class="scorer-primary-col">
+          <span class="primary-val">${primary.val}</span>
+          <span class="primary-label">${primary.label}</span>
         </div>
-        ${assistTxt}
       </div>`;
     }).join('');
 
-    el.innerHTML = `<div class="scorers-list">${rows}</div>`;
+    el.innerHTML = sortBar + `<div class="scorers-list">${rows}</div>`;
   }
 
   /* ---------- Playoff tab ---------- */
@@ -1674,6 +1741,7 @@
     onTpLoserChange:  onTpLoserChange,
     // Players tab filter
     filterPlayers:    (v) => { playerFilter = v || ''; renderPlayersTab(); },
+    setSort:          (s) => setPlayerSort(s),
   };
 
 })();
