@@ -227,8 +227,22 @@
       return;
     }
     const rounds = {};
-    group.filter(m => m.round != null).forEach(m => { (rounds[m.round] = rounds[m.round] || []).push(m); });
-    el.innerHTML = Object.keys(rounds).sort((a,b) => a-b).map(r => {
+    group.forEach(m => {
+      const key = m.round != null ? m.round : 'unassigned';
+      (rounds[key] = rounds[key] || []).push(m);
+    });
+    const roundKeys = Object.keys(rounds)
+      .filter(k => k !== 'unassigned')
+      .sort((a,b) => a - b);
+    if (roundKeys.length === 0) {
+      // No rounds assigned yet — show all matches in a flat list
+      const allPlayed = group.filter(m => m.played).length;
+      el.innerHTML = `<div class="matchday">
+        <div class="matchday-header"><span>Все матчи</span> — ${allPlayed}/${group.length} сыграно</div>
+        <div class="match-grid">${group.map(m => matchCardHTML(m)).join('')}</div></div>`;
+      return;
+    }
+    el.innerHTML = roundKeys.map(r => {
       const list   = rounds[r];
       const played = list.filter(m => m.played).length;
       const dated  = list.find(m => m.match_date);
