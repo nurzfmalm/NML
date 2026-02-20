@@ -70,14 +70,9 @@ select { font-family: inherit; }
 .logo { display: flex; align-items: center; gap: 14px; }
 .logo-icon {
   width: 56px; height: 56px;
-  background: var(--accent);
   border-radius: 14px;
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 900; font-size: 18px;
-  color: #08090d;
-  letter-spacing: 1px;
+  object-fit: contain;
   flex-shrink: 0;
-  box-shadow: 0 0 24px rgba(245,196,0,.25);
 }
 .logo-text h1 {
   font-size: 22px; font-weight: 900;
@@ -529,7 +524,7 @@ body:not(.admin-mode) .bracket-match.played:hover         { border-color: var(--
   .bracket-round { min-width: auto; }
   .modal-match { gap: 10px; }
   .modal-team input { width: 52px; height: 48px; font-size: 22px; }
-  .logo-icon { width: 44px; height: 44px; font-size: 15px; }
+  .logo-icon { width: 44px; height: 44px; }
   .logo-text h1 { font-size: 18px; }
   .nav-btn { padding: 8px 8px; font-size: 12px; }
   .team-list { grid-template-columns: 1fr; }
