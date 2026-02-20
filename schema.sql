@@ -23,9 +23,10 @@ CREATE TABLE matches (
   round      INT,                                 -- tour number (1-8) for group only
   home_id    INT     REFERENCES teams(id) ON DELETE SET NULL,
   away_id    INT     REFERENCES teams(id) ON DELETE SET NULL,
-  home_goals INT,
-  away_goals INT,
-  played     BOOLEAN NOT NULL DEFAULT FALSE
+  home_goals  INT,
+  away_goals  INT,
+  played      BOOLEAN NOT NULL DEFAULT FALSE,
+  match_date  DATE
 );
 
 -- Unique slot for knockout matches (NULLs are allowed for group rows)

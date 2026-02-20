@@ -542,7 +542,9 @@
     <nav class="nav">
       <button class="nav-btn active" data-tab="table">Таблица</button>
       <button class="nav-btn" data-tab="matches">Матчи</button>
+      <button class="nav-btn" data-tab="clubs">Клубы</button>
       <button class="nav-btn" data-tab="players">Игроки</button>
+      <button class="nav-btn" data-tab="hof">Hall of Fame</button>
       <button class="nav-btn" data-tab="playoff">Плей-офф</button>
       <button class="nav-btn" data-tab="admin">Управление</button>
     </nav>
@@ -566,6 +568,7 @@
                 <th>P</th><th>W</th><th>D</th><th>L</th>
                 <th>GS</th><th>GC</th><th>GD</th>
                 <th class="col-pts">Pts</th>
+                <th class="col-form">Форма</th>
               </tr>
             </thead>
             <tbody id="tableBody"></tbody>
@@ -576,6 +579,11 @@
       <!-- Matches -->
       <section id="tab-matches" class="tab">
         <div id="matchdays"></div>
+      </section>
+
+      <!-- Clubs -->
+      <section id="tab-clubs" class="tab">
+        <div id="clubsGrid" class="clubs-grid"></div>
       </section>
 
       <!-- Players / Scorers -->
@@ -610,6 +618,11 @@
           <!-- Only the list is re-rendered -->
           <div id="playersList"></div>
         </div>
+      </section>
+
+      <!-- Hall of Fame -->
+      <section id="tab-hof" class="tab">
+        <div id="hofContent" class="hof-content"></div>
       </section>
 
       <!-- Playoff -->

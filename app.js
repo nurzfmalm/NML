@@ -123,6 +123,8 @@
     renderStats();
     renderTable();
     renderMatches();
+    renderClubs();
+    renderHallOfFame();
     renderPlayoff();
     renderAdmin();
     renderPlayersTab();
@@ -148,18 +150,21 @@
   function getStandings() {
     const map = {};
     teams.forEach(t => {
-      map[t.id] = { id:t.id, name:t.name, p:0, w:0, d:0, l:0, gs:0, gc:0, gd:0, pts:0 };
+      map[t.id] = { id:t.id, name:t.name, p:0, w:0, d:0, l:0, gs:0, gc:0, gd:0, pts:0, form:[] };
     });
-    matches.filter(m => m.match_type === 'group' && m.played).forEach(m => {
+    const playedGroup = matches
+      .filter(m => m.match_type === 'group' && m.played)
+      .sort((a,b) => (a.round||0) - (b.round||0) || a.id - b.id);
+    playedGroup.forEach(m => {
       const h = map[m.home_id], a = map[m.away_id];
       if (!h || !a) return;
       h.p++; a.p++;
       h.gs += m.home_goals; h.gc += m.away_goals;
       a.gs += m.away_goals; a.gc += m.home_goals;
       h.gd = h.gs - h.gc;  a.gd = a.gs - a.gc;
-      if (m.home_goals > m.away_goals)      { h.w++; h.pts += 3; a.l++; }
-      else if (m.home_goals < m.away_goals) { a.w++; a.pts += 3; h.l++; }
-      else                                  { h.d++; h.pts++;    a.d++; a.pts++; }
+      if (m.home_goals > m.away_goals)      { h.w++; h.pts += 3; a.l++; h.form.push('W'); a.form.push('L'); }
+      else if (m.home_goals < m.away_goals) { a.w++; a.pts += 3; h.l++; h.form.push('L'); a.form.push('W'); }
+      else                                  { h.d++; h.pts++;    a.d++; a.pts++; h.form.push('D'); a.form.push('D'); }
     });
     return Object.values(map).sort((a,b) =>
       b.pts - a.pts || b.gd - a.gd || b.gs - a.gs || a.name.localeCompare(b.name)
@@ -172,8 +177,22 @@
     return `<span class="${phCls}">⚽</span>`;
   }
 
+  function formBadgeHTML(results) {
+    const last5 = results.slice(-5);
+    const badges = last5.map(res => {
+      if (res === 'W') return '<span class="form-w">В</span>';
+      if (res === 'D') return '<span class="form-d">Н</span>';
+      return '<span class="form-l">П</span>';
+    });
+    while (badges.length < 5) badges.unshift('<span class="form-ph">·</span>');
+    return badges.join('');
+  }
+
   function renderTable() {
-    const st = customTable || getStandings();
+    const standings = getStandings();
+    const st = customTable || standings;
+    const formMap = {};
+    standings.forEach(r => { formMap[r.id] = r.form || []; });
     document.getElementById('tableBody').innerHTML = st.map((r, i) => {
       const pos   = i + 1;
       const cls   = pos <= 6 ? 'zone-playoff-row' : pos <= 10 ? 'zone-qual-row' : 'zone-out-row';
@@ -183,6 +202,7 @@
       const logo  = teamLogoHTML(tid);
       const click = tid ? `onclick="NML.openTeam(${tid})"` : '';
       const cs    = tid ? 'style="cursor:pointer"' : 'style="cursor:default"';
+      const form  = formBadgeHTML(formMap[tid] || []);
       return `<tr class="${cls}">
         <td class="col-pos">${pos}</td>
         <td class="col-team" ${click} ${cs}>
@@ -190,7 +210,8 @@
         </td>
         <td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td>
         <td>${r.gs}</td><td>${r.gc}</td><td>${gdStr}</td>
-        <td class="col-pts">${r.pts}</td></tr>`;
+        <td class="col-pts">${r.pts}</td>
+        <td class="col-form">${form}</td></tr>`;
     }).join('');
   }
 
@@ -206,12 +227,14 @@
       return;
     }
     const rounds = {};
-    group.forEach(m => { (rounds[m.round] = rounds[m.round] || []).push(m); });
+    group.filter(m => m.round != null).forEach(m => { (rounds[m.round] = rounds[m.round] || []).push(m); });
     el.innerHTML = Object.keys(rounds).sort((a,b) => a-b).map(r => {
       const list   = rounds[r];
       const played = list.filter(m => m.played).length;
+      const dated  = list.find(m => m.match_date);
+      const dateStr = dated ? ` <span class="matchday-date">${formatDate(dated.match_date)}</span>` : '';
       return `<div class="matchday">
-        <div class="matchday-header"><span>Тур ${r}</span> — ${played}/${list.length} сыграно</div>
+        <div class="matchday-header"><span>Тур ${r}</span>${dateStr} — ${played}/${list.length} сыграно</div>
         <div class="match-grid">${list.map(m => matchCardHTML(m)).join('')}</div></div>`;
     }).join('');
   }
@@ -371,6 +394,92 @@
     }).join('');
 
     el.innerHTML = `<div class="scorers-list">${rows}</div>`;
+  }
+
+  /* ---------- Clubs tab ---------- */
+  function renderClubs() {
+    const el = document.getElementById('clubsGrid');
+    if (!el) return;
+    const standings = getStandings();
+    if (!teams.length) { el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:40px">Команды не добавлены</p>'; return; }
+    el.innerHTML = standings.map((r, i) => {
+      const pos  = i + 1;
+      const tid  = r.id || (teams.find(t => t.name === r.name) || {}).id;
+      const logo = teamLogoHTML(tid, 'club-card-logo', 'club-card-logo-ph');
+      const gdStr = (r.gd >= 0 ? '+' : '') + r.gd;
+      return `<div class="club-card" onclick="NML.openTeam(${tid})">
+        <div class="club-card-top">
+          <span class="club-card-pos">${pos}</span>
+          ${logo}
+          <span class="club-card-name">${esc(r.name)}</span>
+        </div>
+        <div class="club-card-stats">
+          <div class="club-stat"><span class="club-stat-val">${r.p}</span><span class="club-stat-lbl">Игры</span></div>
+          <div class="club-stat"><span class="club-stat-val">${r.w}</span><span class="club-stat-lbl">Победы</span></div>
+          <div class="club-stat"><span class="club-stat-val">${r.l}</span><span class="club-stat-lbl">Поражения</span></div>
+          <div class="club-stat"><span class="club-stat-val club-stat-gd">${gdStr}</span><span class="club-stat-lbl">РМ</span></div>
+          <div class="club-stat"><span class="club-stat-val club-stat-pts">${r.pts}</span><span class="club-stat-lbl">Очки</span></div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  /* ---------- Hall of Fame tab ---------- */
+  function renderHallOfFame() {
+    const el = document.getElementById('hofContent');
+    if (!el) return;
+
+    // Top scorers (exclude own goals)
+    const scorerMap = {};
+    goals.filter(g => !g.is_own_goal).forEach(g => {
+      if (!g.player_id) return;
+      scorerMap[g.player_id] = (scorerMap[g.player_id] || 0) + 1;
+    });
+    const scorers = Object.entries(scorerMap)
+      .map(([pid, cnt]) => {
+        const p = players.find(x => x.id === parseInt(pid));
+        return { name: p ? p.name : '?', team_id: p ? p.team_id : null, count: cnt };
+      })
+      .sort((a,b) => b.count - a.count)
+      .slice(0, 10);
+
+    // Top assistants
+    const assistMap = {};
+    goals.filter(g => g.assist_player_id).forEach(g => {
+      assistMap[g.assist_player_id] = (assistMap[g.assist_player_id] || 0) + 1;
+    });
+    const assistants = Object.entries(assistMap)
+      .map(([pid, cnt]) => {
+        const p = players.find(x => x.id === parseInt(pid));
+        return { name: p ? p.name : '?', team_id: p ? p.team_id : null, count: cnt };
+      })
+      .sort((a,b) => b.count - a.count)
+      .slice(0, 10);
+
+    const hofRow = (r, i) => {
+      const logo = teamLogoHTML(r.team_id, 'team-logo-sm', 'team-logo-placeholder-sm');
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `<span class="hof-pos">${i+1}</span>`;
+      return `<div class="hof-row">
+        <span class="hof-medal">${medal}</span>
+        ${logo}
+        <span class="hof-name">${esc(r.name)}</span>
+        <span class="hof-count">${r.count}</span>
+      </div>`;
+    };
+
+    const empty = '<p class="hof-empty">Нет данных</p>';
+
+    el.innerHTML = `
+      <div class="hof-sections">
+        <div class="hof-section">
+          <h3 class="hof-title">⚽ Бомбардиры</h3>
+          ${scorers.length ? scorers.map(hofRow).join('') : empty}
+        </div>
+        <div class="hof-section">
+          <h3 class="hof-title">👟 Ассистенты</h3>
+          ${assistants.length ? assistants.map(hofRow).join('') : empty}
+        </div>
+      </div>`;
   }
 
   /* ---------- Playoff tab ---------- */
@@ -941,6 +1050,7 @@
     const hg    = m.played ? m.home_goals : 0;
     const ag    = m.played ? m.away_goals : 0;
     const isTp  = m.is_technical || false;
+    const dateVal = m.match_date || '';
     const clearBtn = m.played
       ? `<button onclick="NML.clearModal()" class="btn-secondary">Очистить</button>` : '';
 
@@ -984,6 +1094,10 @@
         </div>
       </div>
       <div id="goalEntryWrap">${goalSection}</div>
+      <div class="match-date-row">
+        <label class="match-date-label">📅 Дата матча</label>
+        <input type="date" id="adminMatchDate" class="match-date-input" value="${dateVal}">
+      </div>
       <div class="modal-actions" style="margin-top:16px">
         <button onclick="NML.saveModal()" class="btn-accent">Сохранить</button>
         ${clearBtn}
@@ -1289,8 +1403,11 @@
       }
     }
 
+    const dateEl = document.getElementById('adminMatchDate');
+    const matchDate = dateEl && dateEl.value ? dateEl.value : null;
+
     const { error } = await db.from('matches')
-      .update({ home_goals: hg, away_goals: ag, played: true, is_technical: isTp })
+      .update({ home_goals: hg, away_goals: ag, played: true, is_technical: isTp, match_date: matchDate })
       .eq('id', modalMatchId);
     if (error) { toast('Ошибка сохранения'); console.error(error); return; }
 
@@ -1693,6 +1810,12 @@
     return String(s)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;')
       .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function formatDate(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
   }
 
   let toastTimer;
