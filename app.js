@@ -208,8 +208,9 @@
         <td class="col-team" ${click} ${cs}>
           <div class="team-cell">${logo}<span class="team-cell-name">${esc(r.name)}</span></div>
         </td>
-        <td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td>
-        <td>${r.gs}</td><td>${r.gc}</td><td>${gdStr}</td>
+        <td class="col-p">${r.p}</td>
+        <td class="col-secondary">${r.w}</td><td class="col-secondary">${r.d}</td><td class="col-secondary">${r.l}</td>
+        <td class="col-secondary">${r.gs}</td><td class="col-secondary">${r.gc}</td><td class="col-secondary">${gdStr}</td>
         <td class="col-pts">${r.pts}</td>
         <td class="col-form">${form}</td></tr>`;
     }).join('');

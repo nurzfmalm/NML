@@ -163,9 +163,14 @@ body:not(.admin-mode) .bracket-match.played:hover         { border-color: var(--
   padding: 4px;
   margin-bottom: 20px;
   border: 1px solid var(--border);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+.nav::-webkit-scrollbar { display: none; }
 .nav-btn {
   flex: 1;
+  min-width: max-content;
   padding: 10px 14px;
   border: none;
   background: transparent;
@@ -174,6 +179,7 @@ body:not(.admin-mode) .bracket-match.played:hover         { border-color: var(--
   border-radius: 8px;
   transition: all .18s;
   letter-spacing: .2px;
+  white-space: nowrap;
 }
 .nav-btn:hover { color: var(--text-soft); background: rgba(255,255,255,.04); }
 .nav-btn.active {
@@ -236,12 +242,16 @@ body:not(.admin-mode) .bracket-match.played:hover         { border-color: var(--
 .league-table tbody tr.zone-out-row     td:first-child { box-shadow: inset 3px 0 0 var(--red); }
 
 /* Form column */
-.col-form { min-width: 90px; }
-.col-form span { display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;font-size:10px;font-weight:800;margin:0 1px; }
-.form-w  { background: rgba(39,174,96,.25); color:#27ae60; }
-.form-d  { background: rgba(245,196,0,.2);  color:#f5c400; }
-.form-l  { background: rgba(231,76,60,.2);  color:#e74c3c; }
-.form-ph { background: rgba(255,255,255,.06); color:rgba(255,255,255,.2); font-size:14px; }
+.col-form { min-width: 90px; white-space: nowrap; }
+.col-form span {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 4px;
+  font-size: 10px; font-weight: 800; margin: 0 1px;
+}
+.form-w  { background: rgba(39,174,96,.25); color: #27ae60; }
+.form-d  { background: rgba(245,196,0,.2);  color: #f5c400; }
+.form-l  { background: rgba(231,76,60,.2);  color: #e74c3c; }
+.form-ph { background: rgba(255,255,255,.06); color: rgba(255,255,255,.2); }
 
 /* ===== Matches tab ===== */
 .matchday { margin-bottom: 28px; }
@@ -577,19 +587,83 @@ body:not(.admin-mode) .bracket-match.played:hover         { border-color: var(--
 
 /* ===== Responsive ===== */
 @media (max-width: 700px) {
-  .stats-bar { grid-template-columns: repeat(2, 1fr); }
+
+  /* Layout */
+  .app { padding: 12px 12px 32px; }
+
+  /* Header */
+  .logo-icon { width: 38px; height: 38px; border-radius: 10px; }
+  .logo { gap: 10px; }
+  .logo-text h1 { font-size: 16px; }
+  .logo-text p { font-size: 11px; }
+  .code-box input { width: 130px; font-size: 12px; }
+
+  /* Nav — scrollable single row */
+  .nav {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+    gap: 2px;
+    padding: 3px;
+    margin-bottom: 16px;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav-btn {
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    font-size: 11.5px;
+    white-space: nowrap;
+    border-radius: 7px;
+  }
+
+  /* Stats bar */
+  .stats-bar { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 16px; }
+  .stat-card { padding: 12px; }
   .stat-value { font-size: 22px; }
+  .stat-label { font-size: 10px; }
+
+  /* Zone legend */
+  .zone-legend { gap: 6px; margin-bottom: 10px; }
+  .zone-badge { font-size: 10px; padding: 3px 8px; }
+
+  /* Table — hide secondary columns, show form */
+  .col-secondary { display: none; }
+  .col-form { min-width: 80px; display: table-cell; }
+  .col-form span { width: 15px; height: 15px; font-size: 9px; border-radius: 3px; margin: 0 1px; }
+  .col-p { display: table-cell; }
+  .league-table { font-size: 13px; }
+  .league-table thead th,
+  .league-table tbody td { padding: 9px 8px; }
+  .league-table tbody td.col-pts { font-size: 14px; }
+
+  /* Match cards */
   .match-grid { grid-template-columns: 1fr; }
-  .bracket { flex-direction: column; align-items: stretch; }
-  .bracket-round { min-width: auto; }
+  .match-card { padding: 10px 12px; }
+  .match-home, .match-away { font-size: 12px; }
+  .match-score { font-size: 15px; min-width: 46px; }
+
+  /* Modal */
+  .modal { padding: 20px 16px; border-radius: 14px; }
   .modal-match { gap: 10px; }
   .modal-team input { width: 52px; height: 48px; font-size: 22px; }
-  .logo-icon { width: 44px; height: 44px; }
-  .logo-text h1 { font-size: 18px; }
-  .nav-btn { padding: 8px 8px; font-size: 12px; }
-  .team-list { grid-template-columns: 1fr; }
+
+  /* Bracket */
+  .bracket { flex-direction: column; align-items: stretch; }
+  .bracket-round { min-width: auto; }
   .qual-matches { grid-template-columns: 1fr; }
-  .clubs-grid { grid-template-columns: 1fr 1fr; }
-  .hof-sections { grid-template-columns: 1fr; }
-  .col-form { display: none; }
+
+  /* Admin */
+  .team-list { grid-template-columns: 1fr; }
+
+  /* Clubs */
+  .clubs-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .club-card { padding: 12px; }
+  .club-card-name { font-size: 12px; }
+  .club-stat-val { font-size: 14px; }
+
+  /* Hall of Fame */
+  .hof-sections { grid-template-columns: 1fr; gap: 12px; }
+  .hof-section { padding: 14px; }
+  .hof-count { font-size: 16px; }
 }
