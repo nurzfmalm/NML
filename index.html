@@ -727,6 +727,17 @@
             <p class="hint">Удалит все матчи и результаты. Команды останутся.</p>
             <button id="resetBtn" class="btn-danger">Сбросить все матчи</button>
           </div>
+          <div class="admin-card">
+            <h3>🏆 Зал Славы</h3>
+            <p class="hint">Добавьте выпускника — ФИО, год и легенда о нём.</p>
+            <div class="hof-admin-form">
+              <input id="hofName" type="text" placeholder="ФИО (напр. Тынышбаев Омар)">
+              <input id="hofYear" type="number" placeholder="Год выпуска (напр. 2024)" min="2000" max="2099">
+              <textarea id="hofDesc" placeholder="Описание — за что вошёл в историю (необязательно)" rows="3"></textarea>
+              <button class="btn-accent" onclick="NML.addToHof()">+ Добавить в Зал Славы</button>
+            </div>
+            <div id="hofAdminList" class="hof-admin-list"></div>
+          </div>
         </div>
       </section>
 

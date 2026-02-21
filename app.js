@@ -444,61 +444,117 @@
   }
 
   /* ---------- Hall of Fame tab ---------- */
+  function getHofMembers() {
+    try { return JSON.parse(settings.hof_members || '[]'); } catch { return []; }
+  }
+
   function renderHallOfFame() {
     const el = document.getElementById('hofContent');
     if (!el) return;
 
-    // Top scorers (exclude own goals)
-    const scorerMap = {};
-    goals.filter(g => !g.is_own_goal).forEach(g => {
-      if (!g.player_id) return;
-      scorerMap[g.player_id] = (scorerMap[g.player_id] || 0) + 1;
+    const members = getHofMembers();
+    if (!members.length) {
+      el.innerHTML = '<p class="hof-empty">Зал Славы пока пуст</p>';
+      return;
+    }
+
+    // Group by year descending
+    const byYear = {};
+    members.forEach(m => {
+      const y = m.year || '—';
+      if (!byYear[y]) byYear[y] = [];
+      byYear[y].push(m);
     });
-    const scorers = Object.entries(scorerMap)
-      .map(([pid, cnt]) => {
-        const p = players.find(x => x.id === parseInt(pid));
-        return { name: p ? p.name : '?', team_id: p ? p.team_id : null, count: cnt };
-      })
-      .sort((a,b) => b.count - a.count)
-      .slice(0, 10);
+    const years = Object.keys(byYear).sort((a, b) => b - a);
 
-    // Top assistants
-    const assistMap = {};
-    goals.filter(g => g.assist_player_id).forEach(g => {
-      assistMap[g.assist_player_id] = (assistMap[g.assist_player_id] || 0) + 1;
+    el.innerHTML = years.map(year => `
+      <div class="hof-year-block">
+        <div class="hof-year-header">
+          <div class="hof-year-line"></div>
+          <div class="hof-year-badge">✦ ВЫПУСК ${esc(String(year))} ✦</div>
+          <div class="hof-year-line"></div>
+        </div>
+        <div class="hof-year-decree">В Hall of Fame вошли:</div>
+        <div class="hof-entries">
+          ${byYear[year].map(m => `
+            <div class="hof-entry">
+              <div class="hof-entry-ornament">⸻ ✦ ⸻</div>
+              <div class="hof-entry-name">${esc(m.name)}</div>
+              ${m.description ? `<div class="hof-entry-desc">&ldquo;${esc(m.description)}&rdquo;</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>`
+    ).join('');
+  }
+
+  /* ---------- HoF admin functions ---------- */
+  function renderAdminHof() {
+    const el = document.getElementById('hofAdminList');
+    if (!el) return;
+    const members = getHofMembers();
+    if (!members.length) {
+      el.innerHTML = '<p style="opacity:.5;font-size:.85rem">Список пуст</p>';
+      return;
+    }
+    // Group by year descending for admin list too
+    const byYear = {};
+    members.forEach((m, i) => {
+      const y = m.year || '—';
+      if (!byYear[y]) byYear[y] = [];
+      byYear[y].push({ name: m.name, desc: m.description, idx: i });
     });
-    const assistants = Object.entries(assistMap)
-      .map(([pid, cnt]) => {
-        const p = players.find(x => x.id === parseInt(pid));
-        return { name: p ? p.name : '?', team_id: p ? p.team_id : null, count: cnt };
-      })
-      .sort((a,b) => b.count - a.count)
-      .slice(0, 10);
+    const years = Object.keys(byYear).sort((a, b) => b - a);
+    el.innerHTML = years.map(year => `
+      <div class="hof-admin-year-group">
+        <div class="hof-admin-year-label">Выпуск ${esc(String(year))}</div>
+        ${byYear[year].map(entry => `
+          <div class="hof-admin-row">
+            <div class="hof-admin-entry-info">
+              <span class="hof-admin-name">${esc(entry.name)}</span>
+              ${entry.desc ? `<span class="hof-admin-desc">${esc(entry.desc)}</span>` : ''}
+            </div>
+            <button class="btn-sm-danger" onclick="NML.removeFromHof(${entry.idx})">✕</button>
+          </div>`).join('')}
+      </div>`
+    ).join('');
+  }
 
-    const hofRow = (r, i) => {
-      const logo = teamLogoHTML(r.team_id, 'team-logo-sm', 'team-logo-placeholder-sm');
-      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `<span class="hof-pos">${i+1}</span>`;
-      return `<div class="hof-row">
-        <span class="hof-medal">${medal}</span>
-        ${logo}
-        <span class="hof-name">${esc(r.name)}</span>
-        <span class="hof-count">${r.count}</span>
-      </div>`;
-    };
+  async function addToHof() {
+    const nameInp = document.getElementById('hofName');
+    const yearInp = document.getElementById('hofYear');
+    const descInp = document.getElementById('hofDesc');
+    const name = nameInp.value.trim();
+    const year = parseInt(yearInp.value);
+    const description = descInp.value.trim();
+    if (!name) { toast('Введите ФИО'); return; }
+    if (!year) { toast('Введите год выпуска'); return; }
 
-    const empty = '<p class="hof-empty">Нет данных</p>';
+    const members = getHofMembers();
+    members.push({ name, year, ...(description && { description }) });
+    const { error } = await db.from('settings')
+      .upsert({ key: 'hof_members', value: JSON.stringify(members) });
+    if (error) { toast('Ошибка сохранения'); console.error(error); return; }
 
-    el.innerHTML = `
-      <div class="hof-sections">
-        <div class="hof-section">
-          <h3 class="hof-title">⚽ Бомбардиры</h3>
-          ${scorers.length ? scorers.map(hofRow).join('') : empty}
-        </div>
-        <div class="hof-section">
-          <h3 class="hof-title">👟 Ассистенты</h3>
-          ${assistants.length ? assistants.map(hofRow).join('') : empty}
-        </div>
-      </div>`;
+    nameInp.value = '';
+    yearInp.value = '';
+    descInp.value = '';
+    await loadAll();
+    renderHallOfFame();
+    renderAdminHof();
+    toast('Добавлен в Зал Славы');
+  }
+
+  async function removeFromHof(index) {
+    const members = getHofMembers();
+    members.splice(index, 1);
+    const { error } = await db.from('settings')
+      .upsert({ key: 'hof_members', value: JSON.stringify(members) });
+    if (error) { toast('Ошибка удаления'); console.error(error); return; }
+    await loadAll();
+    renderHallOfFame();
+    renderAdminHof();
+    toast('Удалён из Зала Славы');
   }
 
   /* ---------- Playoff tab ---------- */
@@ -633,6 +689,7 @@
     const badge = document.getElementById('customTableBadge');
     if (badge) badge.hidden = !customTable;
     fillTeamSelects();
+    renderAdminHof();
   }
 
   function fillTeamSelects() {
@@ -2139,6 +2196,9 @@
     exportMatches:    exportMatches,
     exportTable:      exportTable,
     clearCustomTable: clearCustomTable,
+    // Hall of Fame admin
+    addToHof:      addToHof,
+    removeFromHof: removeFromHof,
     // Team page (separate full-screen view)
     openTeamPage:        openTeamPage,
     closeTeamPage:       closeTeamPage,

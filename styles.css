@@ -569,21 +569,111 @@ body:not(.admin-mode) .bracket-match.played:hover         { border-color: var(--
 .club-stat-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
 
 /* ===== Hall of Fame tab ===== */
-.hof-content { padding: 4px 0; }
-.hof-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-.hof-section { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
-.hof-title { font-size: 15px; font-weight: 900; color: var(--text); margin: 0 0 16px; letter-spacing: -.2px; }
-.hof-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
+.hof-content {
+  padding: 24px 0 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 72px;
 }
-.hof-row:last-child { border-bottom: none; }
-.hof-medal { font-size: 18px; width: 26px; text-align: center; flex-shrink: 0; }
-.hof-pos { display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.07);font-size:11px;font-weight:800;color:var(--muted); }
-.hof-name { flex: 1; font-weight: 600; font-size: 14px; color: var(--text); }
-.hof-count { font-size: 18px; font-weight: 900; color: var(--accent); min-width: 28px; text-align: right; }
-.hof-empty { color: var(--muted); font-size: 14px; text-align: center; padding: 20px 0; }
+.hof-empty {
+  color: var(--muted); font-size: 14px;
+  text-align: center; padding: 80px 0; opacity: .4;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+
+/* Year block */
+.hof-year-block { display: flex; flex-direction: column; align-items: center; text-align: center; }
+
+.hof-year-header {
+  display: flex; align-items: center; gap: 16px;
+  width: 100%; margin-bottom: 10px;
+}
+.hof-year-line {
+  flex: 1; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(245,196,0,.4), transparent);
+}
+.hof-year-badge {
+  font-size: .75rem; font-weight: 800;
+  letter-spacing: .22em;
+  color: var(--accent);
+  white-space: nowrap;
+  text-transform: uppercase;
+  opacity: .8;
+}
+.hof-year-decree {
+  font-size: .78rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  opacity: .35;
+  margin-bottom: 40px;
+}
+
+/* Entries */
+.hof-entries { display: flex; flex-direction: column; gap: 48px; width: 100%; max-width: 680px; }
+
+.hof-entry {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  position: relative;
+  padding: 32px 40px;
+  background: linear-gradient(160deg, rgba(245,196,0,.04) 0%, rgba(255,255,255,.02) 100%);
+  border: 1px solid rgba(245,196,0,.14);
+  border-radius: 20px;
+}
+.hof-entry::before,
+.hof-entry::after {
+  content: '';
+  position: absolute;
+  left: 32px; right: 32px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(245,196,0,.3), transparent);
+}
+.hof-entry::before { top: 0; }
+.hof-entry::after  { bottom: 0; }
+
+.hof-entry-ornament {
+  font-size: .75rem;
+  letter-spacing: .3em;
+  color: var(--accent);
+  opacity: .5;
+}
+.hof-entry-name {
+  font-size: 1.75rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+  color: #fff;
+  text-shadow: 0 0 40px rgba(245,196,0,.25);
+  line-height: 1.15;
+}
+.hof-entry-desc {
+  font-size: .92rem;
+  font-style: italic;
+  color: rgba(255,255,255,.55);
+  line-height: 1.7;
+  max-width: 520px;
+  quotes: '\201C' '\201D';
+}
+
+/* HoF admin section */
+.hof-admin-form { display: flex; flex-direction: column; gap: 8px; }
+.hof-admin-form input,
+.hof-admin-form textarea {
+  padding: 8px 10px; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.15);
+  background: rgba(255,255,255,.06);
+  color: #fff; font-size: .88rem; width: 100%;
+  font-family: inherit; resize: vertical;
+}
+.hof-admin-form input:focus,
+.hof-admin-form textarea:focus { outline: none; border-color: var(--accent); }
+.hof-admin-list { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
+.hof-admin-year-group { display: flex; flex-direction: column; gap: 4px; }
+.hof-admin-year-label { font-size: .72rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; padding: 6px 0 2px; }
+.hof-admin-row { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; background: rgba(255,255,255,.04); border-radius: 8px; }
+.hof-admin-entry-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.hof-admin-name { font-size: .85rem; font-weight: 600; }
+.hof-admin-desc { font-size: .75rem; opacity: .45; font-style: italic; }
+.btn-sm-danger { background: rgba(239,68,68,.15); border: 1px solid rgba(239,68,68,.3); color: #ef4444; border-radius: 6px; padding: 3px 8px; font-size: .75rem; cursor: pointer; transition: background .15s; flex-shrink: 0; }
+.btn-sm-danger:hover { background: rgba(239,68,68,.3); }
 
 /* ===== Responsive ===== */
 @media (max-width: 700px) {
@@ -663,7 +753,8 @@ body:not(.admin-mode) .bracket-match.played:hover         { border-color: var(--
   .club-stat-val { font-size: 14px; }
 
   /* Hall of Fame */
-  .hof-sections { grid-template-columns: 1fr; gap: 12px; }
-  .hof-section { padding: 14px; }
-  .hof-count { font-size: 16px; }
+  .hof-entry { padding: 24px 20px; }
+  .hof-entry-name { font-size: 1.35rem; }
+  .hof-content { gap: 48px; }
+  .hof-entries { gap: 32px; }
 }
