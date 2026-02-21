@@ -66,7 +66,10 @@ INSERT INTO teams (name, sort_order) VALUES
   ('Команда 15', 15),
   ('Команда 16', 16);
 
--- 7) Enable Realtime (optional — for live updates across browsers)
+-- 7) Add photo column to players (run this if players table already exists)
+-- ALTER TABLE players ADD COLUMN IF NOT EXISTS photo TEXT;
+
+-- 8) Enable Realtime (optional — for live updates across browsers)
 -- Go to Supabase Dashboard → Database → Replication and enable the tables,
 -- or run:
 ALTER PUBLICATION supabase_realtime ADD TABLE matches;

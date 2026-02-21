@@ -27,6 +27,10 @@
   let currentTeamTab = 'roster'; // 'roster' | 'matches'
   let expandedPlayerId = null;
 
+  // Team page state
+  let teamPageId  = null;
+  let teamPageTab = 'roster';
+
   // Match modal state
   let modalMatchId = null;
   // modalGoals: [{player_id, team_id, player_name, minute, assist_player_id, assist_name, is_own_goal}]
@@ -200,7 +204,7 @@
       const gdStr = gd > 0 ? '+' + gd : gd;
       const tid   = r.id || (teams.find(t => t.name === r.name) || {}).id;
       const logo  = teamLogoHTML(tid);
-      const click = tid ? `onclick="NML.openTeam(${tid})"` : '';
+      const click = tid ? `onclick="NML.openTeamPage(${tid})"` : '';
       const cs    = tid ? 'style="cursor:pointer"' : 'style="cursor:default"';
       const form  = formBadgeHTML(formMap[tid] || []);
       return `<tr class="${cls}">
@@ -422,7 +426,7 @@
       const tid  = r.id || (teams.find(t => t.name === r.name) || {}).id;
       const logo = teamLogoHTML(tid, 'club-card-logo', 'club-card-logo-ph');
       const gdStr = (r.gd >= 0 ? '+' : '') + r.gd;
-      return `<div class="club-card" onclick="NML.openTeam(${tid})">
+      return `<div class="club-card" onclick="NML.openTeamPage(${tid})">
         <div class="club-card-top">
           <span class="club-card-pos">${pos}</span>
           ${logo}
@@ -939,6 +943,7 @@
     overlay.addEventListener('click', e => { if (e.target === overlay) closeTeamModal(); });
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && !overlay.hidden) closeTeamModal();
+      if (e.key === 'Escape' && !document.getElementById('teamPage').hidden) closeTeamPage();
     });
     document.getElementById('tmLogoInput').addEventListener('change', async e => {
       const file = e.target.files[0];
@@ -946,6 +951,281 @@
       await uploadLogoForTeam(currentTeamId, file);
       e.target.value = '';
     });
+  }
+
+  /* =========================================================
+     TEAM PAGE (separate full-screen view)
+     ========================================================= */
+  function openTeamPage(teamId) {
+    teamPageId  = teamId;
+    teamPageTab = 'roster';
+    renderTeamPage();
+    document.getElementById('teamPage').hidden = false;
+    window.scrollTo(0, 0);
+  }
+
+  function closeTeamPage() {
+    document.getElementById('teamPage').hidden = true;
+    teamPageId = null;
+  }
+
+  function switchTeamPageTab(tab) {
+    teamPageTab = tab;
+    document.querySelectorAll('.tp-tab-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === tab);
+    });
+    document.getElementById('tpRosterTab').style.display  = tab === 'roster'  ? '' : 'none';
+    document.getElementById('tpMatchesTab').style.display = tab === 'matches' ? '' : 'none';
+    if (tab === 'matches') renderTeamPageMatches();
+  }
+
+  function renderTeamPage() {
+    const t = teams.find(x => x.id === teamPageId);
+    if (!t) return;
+
+    // Logo
+    const img = document.getElementById('tpLogoImg');
+    const ph  = document.getElementById('tpLogoPlaceholder');
+    if (t.logo) { img.src = t.logo; img.hidden = false; ph.hidden = true; }
+    else        { img.hidden = true; ph.hidden = false; }
+
+    // Admin logo upload button
+    const adminLogoBtn = document.getElementById('tpAdminLogoBtn');
+    adminLogoBtn.innerHTML = isAdmin
+      ? `<label class="logo-upload-btn" style="display:inline-block;cursor:pointer">
+           📷 Лого
+           <input type="file" accept="image/*" hidden onchange="NML.tpLogoChange(event)">
+         </label>`
+      : '';
+
+    // Name & meta
+    document.getElementById('tpTeamName').textContent = t.name;
+    const st        = getStandings().find(r => r.id === teamPageId) || {};
+    const teamGoals = goals.filter(g => g.team_id === teamPageId && !g.is_own_goal).length;
+    const pCount    = players.filter(p => p.team_id === teamPageId).length;
+    const mPlayed   = matches.filter(m =>
+      m.played && (m.home_id === teamPageId || m.away_id === teamPageId)
+    ).length;
+    document.getElementById('tpTeamMeta').innerHTML =
+      `<span>📋 ${pCount} игрок${pCount===1?'':pCount<5?'а':'ов'}</span>` +
+      `<span>🏟 ${mPlayed} матч${mPlayed===1?'':mPlayed<5&&mPlayed>1?'а':'ей'}</span>` +
+      (st.pts != null ? `<span>🏆 ${st.pts} очков</span>` : '') +
+      `<span>⚽ ${teamGoals} гол${teamGoals===1?'':teamGoals<5&&teamGoals>1?'а':'ов'}</span>`;
+
+    // + Player button (admin only)
+    const addBtn = document.getElementById('tpAddPlayerBtn');
+    if (addBtn) addBtn.style.display = isAdmin ? '' : 'none';
+
+    renderTeamPagePlayerCards();
+    renderTeamPageRoster();
+
+    // Reset to roster tab
+    document.querySelectorAll('.tp-tab-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === 'roster');
+    });
+    document.getElementById('tpRosterTab').style.display  = '';
+    document.getElementById('tpMatchesTab').style.display = 'none';
+  }
+
+  function renderTeamPagePlayerCards() {
+    const el = document.getElementById('tpPlayerCardsInner');
+    if (!el) return;
+    const roster = players.filter(p => p.team_id === teamPageId)
+      .sort((a,b) => (a.number||999) - (b.number||999) || (a.name||'').localeCompare(b.name||''));
+
+    const goalMap = {};
+    goals.forEach(g => {
+      if (g.player_id && !g.is_own_goal) {
+        const m = matches.find(x => x.id === g.match_id);
+        if (m && !m.is_technical) goalMap[g.player_id] = (goalMap[g.player_id] || 0) + 1;
+      }
+    });
+
+    if (!roster.length) {
+      el.innerHTML = '<div class="no-players-msg">Состав пока не добавлен</div>';
+      return;
+    }
+
+    el.innerHTML = roster.map(p => {
+      const g = goalMap[p.id] || 0;
+      const initials = (p.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+      const photoEl = p.photo
+        ? `<img src="${esc(p.photo)}" class="tp-player-card-photo" alt="${esc(p.name)}">`
+        : `<div class="tp-player-card-ph">${initials}</div>`;
+      const goalsBadge = g > 0 ? `<div class="tp-player-card-goals">⚽ ${g}</div>` : '';
+      const adminClick = isAdmin ? `onclick="NML.promptPlayerPhoto(${p.id})"` : '';
+      return `<div class="tp-player-card" ${adminClick} title="${esc(p.name)}">
+        ${photoEl}
+        <div class="tp-player-card-info">
+          <div class="tp-player-card-num">${p.number ? '#' + p.number : ''}</div>
+          <div class="tp-player-card-name">${esc(p.name)}</div>
+          ${goalsBadge}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderTeamPageRoster() {
+    const roster = players.filter(p => p.team_id === teamPageId)
+      .sort((a,b) => (a.number||999) - (b.number||999) || (a.name||'').localeCompare(b.name||''));
+    const goalMap   = {};
+    const assistMap = {};
+    goals.forEach(g => {
+      if (g.player_id && !g.is_own_goal) {
+        const m = matches.find(x => x.id === g.match_id);
+        if (m && !m.is_technical) goalMap[g.player_id] = (goalMap[g.player_id] || 0) + 1;
+      }
+      if (g.assist_player_id) {
+        const m = matches.find(x => x.id === g.match_id);
+        if (m && !m.is_technical) assistMap[g.assist_player_id] = (assistMap[g.assist_player_id] || 0) + 1;
+      }
+    });
+
+    const el = document.getElementById('tpRosterTab');
+    if (!el) return;
+    if (!roster.length) {
+      el.innerHTML = `<div class="no-players-msg">👥 Состав пока не добавлен${isAdmin?'<br><small>Нажмите «+ Игрок»</small>':''}</div>`;
+      return;
+    }
+    el.innerHTML = roster.map(p => {
+      const g = goalMap[p.id] || 0;
+      const a = assistMap[p.id] || 0;
+      const gCls = g ? '' : ' zero';
+      const assistBadge = a > 0 ? `<span class="player-stat-badge assist" title="Ассистов">👟 ${a}</span>` : '';
+      return `<div class="player-item-wrap">
+        <div class="player-item">
+          <span class="player-num">${p.number ? '#' + p.number : '—'}</span>
+          <span class="player-name">${esc(p.name)}</span>
+          <span class="player-stat-badge goal${gCls}">⚽ ${g}</span>
+          ${assistBadge}
+          ${isAdmin ? `<button class="btn-remove-player" onclick="NML.removePlayerPage(${p.id})" title="Удалить">✕</button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderTeamPageMatches() {
+    const el = document.getElementById('tpMatchesTab');
+    if (!el) return;
+    const teamMatches = matches.filter(m =>
+      m.played && (m.home_id === teamPageId || m.away_id === teamPageId)
+    ).sort((a,b) => {
+      const order = { group:0, qual:1, qf:2, sf:3, final:4 };
+      const oa = order[a.match_type] ?? 0, ob = order[b.match_type] ?? 0;
+      if (oa !== ob) return oa - ob;
+      return (a.round||0) - (b.round||0);
+    });
+    if (!teamMatches.length) {
+      el.innerHTML = '<div class="no-players-msg">Сыгранных матчей пока нет</div>'; return;
+    }
+    const matchType = { group:'Тур ', qual:'Стыковые', qf:'Четвертьфинал', sf:'Полуфинал', final:'Финал' };
+    el.innerHTML = teamMatches.map(m => {
+      const isHome = m.home_id === teamPageId;
+      const oppId  = isHome ? m.away_id : m.home_id;
+      const myG    = isHome ? m.home_goals : m.away_goals;
+      const oppG   = isHome ? m.away_goals : m.home_goals;
+      const won    = myG > oppG, drew = myG === oppG;
+      const resultLabel = m.is_technical ? 'ТП' : (won ? 'В' : drew ? 'Н' : 'П');
+      const resBadgeCls = m.is_technical ? 'tm-res tp' : (won ? 'tm-res win' : drew ? 'tm-res draw' : 'tm-res loss');
+      const oppTeam = teams.find(x => x.id === oppId) || {};
+      const oppLogo = oppTeam.logo
+        ? `<img src="${esc(oppTeam.logo)}" class="team-logo-sm" alt="">`
+        : `<span class="team-logo-placeholder-sm"></span>`;
+      const homeAway = isHome ? '<span class="tm-ha home">Д</span>' : '<span class="tm-ha away">Г</span>';
+      const typeLabel = m.match_type === 'group'
+        ? 'Тур ' + m.round
+        : (matchType[m.match_type] || m.match_type);
+      const matchGoals = m.is_technical ? [] : goals.filter(g =>
+        g.match_id === m.id &&
+        ((g.team_id === teamPageId && !g.is_own_goal) || (g.team_id !== teamPageId && g.is_own_goal))
+      ).sort((a,b) => (a.minute||0) - (b.minute||0));
+      const scorers = matchGoals.map(g => {
+        const p = players.find(x => x.id === g.player_id);
+        const name = p ? shortName(p.name) : '?';
+        const min  = g.minute ? `${g.minute}'` : '';
+        const og   = g.is_own_goal ? ' <span style="color:var(--red);font-size:.68rem">АГ</span>' : '';
+        return `<span class="tm-match-scorer">${esc(name)}${og}${min ? ` <span style="opacity:.5">${min}</span>` : ''}</span>`;
+      }).join('');
+      return `<div class="tm-match-row">
+        <div class="tm-match-left">
+          <span class="${resBadgeCls}">${resultLabel}</span>
+          ${homeAway}
+        </div>
+        <div class="tm-match-center">
+          <div class="tm-match-opp">${oppLogo}<span class="tm-opp-name">${esc(oppTeam.name || '?')}</span></div>
+          <div class="tm-match-score-line">
+            <span class="tm-score">${myG} : ${oppG}</span>
+            <span class="tm-match-type">${esc(typeLabel)}</span>
+          </div>
+          ${scorers ? `<div class="tm-match-scorers">${scorers}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function toggleAddPlayerPage() {
+    const form = document.getElementById('tpAddPlayerForm');
+    form.style.display = form.style.display === 'flex' ? 'none' : 'flex';
+    if (form.style.display === 'flex') document.getElementById('tpApLastName').focus();
+  }
+
+  async function addPlayerPage() {
+    const num       = parseInt(document.getElementById('tpApNum').value) || null;
+    const lastName  = document.getElementById('tpApLastName').value.trim();
+    const firstName = document.getElementById('tpApFirstName').value.trim();
+    if (!lastName) { toast('Введите фамилию игрока'); return; }
+    const fullName = firstName ? `${lastName} ${firstName}` : lastName;
+    const { error } = await db.from('players').insert([{
+      team_id:    teamPageId,
+      name:       fullName,
+      number:     num,
+      sort_order: players.filter(p => p.team_id === teamPageId).length,
+    }]);
+    if (error) { toast('Ошибка добавления игрока'); console.error(error); return; }
+    document.getElementById('tpApNum').value = '';
+    document.getElementById('tpApLastName').value  = '';
+    document.getElementById('tpApFirstName').value = '';
+    document.getElementById('tpAddPlayerForm').style.display = 'none';
+    await loadAll();
+    renderTeamPage();
+    toast('Игрок добавлен');
+  }
+
+  async function removePlayerPage(playerId) {
+    if (!confirm('Удалить игрока? Голы также будут удалены.')) return;
+    await db.from('goals').delete().eq('player_id', playerId);
+    const { error } = await db.from('players').delete().eq('id', playerId);
+    if (error) { toast('Ошибка удаления'); console.error(error); return; }
+    await loadAll();
+    if (teamPageId) renderTeamPage();
+    toast('Игрок удалён');
+  }
+
+  function promptPlayerPhoto(playerId) {
+    if (!isAdmin) return;
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async ev => {
+        const { error } = await db.from('players').update({ photo: ev.target.result }).eq('id', playerId);
+        if (error) { toast('Ошибка загрузки фото'); console.error(error); return; }
+        await loadAll();
+        if (teamPageId) renderTeamPage();
+        toast('Фото сохранено');
+      };
+      reader.readAsDataURL(file);
+    };
+    inp.click();
+  }
+
+  async function tpLogoChange(event) {
+    const file = event.target.files[0];
+    if (!file || !teamPageId) return;
+    await uploadLogoForTeam(teamPageId, file);
+    event.target.value = '';
   }
 
   /* ── Add player: Фамилия + Имя + Номер (no rating) ── */
@@ -1000,6 +1280,7 @@
       if (error) { toast('Ошибка загрузки логотипа'); console.error(error); return; }
       await loadAll();
       if (currentTeamId === teamId) renderTeamModal();
+      if (teamPageId === teamId) renderTeamPage();
       toast('Логотип сохранён');
     };
     reader.readAsDataURL(file);
@@ -1858,7 +2139,16 @@
     exportMatches:    exportMatches,
     exportTable:      exportTable,
     clearCustomTable: clearCustomTable,
-    // Team modal
+    // Team page (separate full-screen view)
+    openTeamPage:        openTeamPage,
+    closeTeamPage:       closeTeamPage,
+    switchTeamPageTab:   switchTeamPageTab,
+    toggleAddPlayerPage: toggleAddPlayerPage,
+    addPlayerPage:       addPlayerPage,
+    removePlayerPage:    removePlayerPage,
+    promptPlayerPhoto:   promptPlayerPhoto,
+    tpLogoChange:        tpLogoChange,
+    // Team modal (kept for internal use)
     openTeam:         openTeamModal,
     closeTeam:        closeTeamModal,
     switchTab:        switchTeamTab,
