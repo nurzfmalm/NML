@@ -630,6 +630,25 @@ body:not(.admin-mode) .bracket-match.played:hover         { border-color: var(--
 .hof-entry::before { top: 0; }
 .hof-entry::after  { bottom: 0; }
 
+/* Portrait */
+.hof-portrait {
+  width: 120px; height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid rgba(245,196,0,.5);
+  box-shadow: 0 0 32px rgba(245,196,0,.2), 0 0 0 6px rgba(245,196,0,.06);
+  margin-bottom: 4px;
+}
+.hof-portrait-ph {
+  width: 120px; height: 120px;
+  border-radius: 50%;
+  background: rgba(245,196,0,.07);
+  border: 3px solid rgba(245,196,0,.2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 2.4rem; font-weight: 900; color: rgba(245,196,0,.4);
+  margin-bottom: 4px;
+}
+
 .hof-entry-ornament {
   font-size: .75rem;
   letter-spacing: .3em;
@@ -653,8 +672,73 @@ body:not(.admin-mode) .bracket-match.played:hover         { border-color: var(--
   quotes: '\201C' '\201D';
 }
 
+/* Call buttons */
+.hof-call-label {
+  font-size: .8rem;
+  letter-spacing: .12em;
+  color: rgba(255,255,255,.4);
+  margin-top: 16px;
+}
+.hof-call-btns {
+  display: flex;
+  gap: 32px;
+  margin-top: 4px;
+}
+.hof-call-btn {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  background: #34c85a;
+  border: none;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: 0 4px 24px rgba(52,200,90,.45);
+  transition: transform .12s, box-shadow .12s;
+  animation: hof-ring 2s ease-in-out infinite;
+}
+.hof-call-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 32px rgba(52,200,90,.65);
+}
+.hof-call-btn--deco { cursor: default; }
+.hof-call-btn--deco:hover { transform: none; box-shadow: 0 4px 24px rgba(52,200,90,.45); }
+
+@keyframes hof-ring {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.06); }
+}
+.hof-call-btn:nth-child(2) { animation-delay: .3s; }
+
 /* HoF admin section */
 .hof-admin-form { display: flex; flex-direction: column; gap: 8px; }
+.hof-photo-label {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 8px;
+  border: 1px dashed rgba(255,255,255,.2);
+  background: rgba(255,255,255,.04);
+  color: rgba(255,255,255,.6); font-size: .85rem;
+  cursor: pointer; transition: all .15s;
+}
+.hof-photo-label:hover { border-color: var(--accent); color: var(--accent); }
+.hof-photo-preview {
+  width: 80px; height: 80px;
+  border-radius: 50%; object-fit: cover;
+  border: 2px solid rgba(245,196,0,.4);
+  align-self: center;
+}
+.hof-admin-thumb {
+  width: 36px; height: 36px; border-radius: 50%;
+  object-fit: cover; flex-shrink: 0;
+  border: 1px solid rgba(245,196,0,.3);
+  cursor: pointer; transition: border-color .15s;
+}
+.hof-admin-thumb:hover { border-color: var(--accent); }
+.hof-admin-thumb-ph {
+  background: rgba(245,196,0,.08);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .72rem; font-weight: 700; color: rgba(245,196,0,.5);
+}
 .hof-admin-form input,
 .hof-admin-form textarea {
   padding: 8px 10px; border-radius: 8px;

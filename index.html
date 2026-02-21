@@ -734,6 +734,18 @@
               <input id="hofName" type="text" placeholder="ФИО (напр. Тынышбаев Омар)">
               <input id="hofYear" type="number" placeholder="Год выпуска (напр. 2024)" min="2000" max="2099">
               <textarea id="hofDesc" placeholder="Описание — за что вошёл в историю (необязательно)" rows="3"></textarea>
+              <input id="hofPhone" type="tel" placeholder="Номер телефона (необязательно, напр. +7 777 123 45 67)">
+              <label class="hof-photo-label">
+                📷 Фото (необязательно)
+                <input id="hofPhoto" type="file" accept="image/*" hidden
+                  onchange="
+                    const f=this.files[0];
+                    const pr=document.getElementById('hofPhotoPreview');
+                    if(f){pr.src=URL.createObjectURL(f);pr.hidden=false;}
+                    else{pr.hidden=true;}
+                  ">
+              </label>
+              <img id="hofPhotoPreview" class="hof-photo-preview" hidden>
               <button class="btn-accent" onclick="NML.addToHof()">+ Добавить в Зал Славы</button>
             </div>
             <div id="hofAdminList" class="hof-admin-list"></div>

@@ -476,13 +476,27 @@
         </div>
         <div class="hof-year-decree">В Hall of Fame вошли:</div>
         <div class="hof-entries">
-          ${byYear[year].map(m => `
-            <div class="hof-entry">
+          ${byYear[year].map(m => {
+            const initials = (m.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+            const photoEl = m.photo
+              ? `<img src="${esc(m.photo)}" class="hof-portrait" alt="${esc(m.name)}">`
+              : `<div class="hof-portrait-ph">${initials}</div>`;
+            const phoneSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="26" height="26"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.06 1h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 21 16l.92.92z"/></svg>`;
+            const callBtn = m.phone
+              ? `<a href="tel:${esc(m.phone)}" class="hof-call-btn">${phoneSvg}</a>`
+              : `<button class="hof-call-btn hof-call-btn--deco">${phoneSvg}</button>`;
+            return `<div class="hof-entry">
+              ${photoEl}
               <div class="hof-entry-ornament">⸻ ✦ ⸻</div>
               <div class="hof-entry-name">${esc(m.name)}</div>
               ${m.description ? `<div class="hof-entry-desc">&ldquo;${esc(m.description)}&rdquo;</div>` : ''}
-            </div>
-          `).join('')}
+              <div class="hof-call-label">Входящий звонок...</div>
+              <div class="hof-call-btns">
+                ${callBtn}
+                ${callBtn}
+              </div>
+            </div>`;
+          }).join('')}
         </div>
       </div>`
     ).join('');
@@ -502,47 +516,98 @@
     members.forEach((m, i) => {
       const y = m.year || '—';
       if (!byYear[y]) byYear[y] = [];
-      byYear[y].push({ name: m.name, desc: m.description, idx: i });
+      byYear[y].push({ name: m.name, desc: m.description, photo: m.photo, idx: i });
     });
     const years = Object.keys(byYear).sort((a, b) => b - a);
     el.innerHTML = years.map(year => `
       <div class="hof-admin-year-group">
         <div class="hof-admin-year-label">Выпуск ${esc(String(year))}</div>
-        ${byYear[year].map(entry => `
-          <div class="hof-admin-row">
+        ${byYear[year].map(entry => {
+          const initials = (entry.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+          const thumb = entry.photo
+            ? `<img src="${esc(entry.photo)}" class="hof-admin-thumb" onclick="NML.changeHofPhoto(${entry.idx})" title="Сменить фото">`
+            : `<div class="hof-admin-thumb hof-admin-thumb-ph" onclick="NML.changeHofPhoto(${entry.idx})" title="Загрузить фото">${initials}</div>`;
+          return `<div class="hof-admin-row">
+            ${thumb}
             <div class="hof-admin-entry-info">
               <span class="hof-admin-name">${esc(entry.name)}</span>
               ${entry.desc ? `<span class="hof-admin-desc">${esc(entry.desc)}</span>` : ''}
             </div>
             <button class="btn-sm-danger" onclick="NML.removeFromHof(${entry.idx})">✕</button>
-          </div>`).join('')}
+          </div>`;
+        }).join('')}
       </div>`
     ).join('');
   }
 
   async function addToHof() {
-    const nameInp = document.getElementById('hofName');
-    const yearInp = document.getElementById('hofYear');
-    const descInp = document.getElementById('hofDesc');
+    const nameInp  = document.getElementById('hofName');
+    const yearInp  = document.getElementById('hofYear');
+    const descInp  = document.getElementById('hofDesc');
+    const phoneInp = document.getElementById('hofPhone');
+    const photoInp = document.getElementById('hofPhoto');
     const name = nameInp.value.trim();
     const year = parseInt(yearInp.value);
     const description = descInp.value.trim();
+    const phone = phoneInp.value.trim();
     if (!name) { toast('Введите ФИО'); return; }
     if (!year) { toast('Введите год выпуска'); return; }
 
+    const file = photoInp.files[0];
+    const readPhoto = file
+      ? await new Promise(resolve => {
+          const r = new FileReader();
+          r.onload = e => resolve(e.target.result);
+          r.readAsDataURL(file);
+        })
+      : null;
+
     const members = getHofMembers();
-    members.push({ name, year, ...(description && { description }) });
+    members.push({
+      name, year,
+      ...(description && { description }),
+      ...(phone       && { phone }),
+      ...(readPhoto   && { photo: readPhoto }),
+    });
     const { error } = await db.from('settings')
       .upsert({ key: 'hof_members', value: JSON.stringify(members) });
     if (error) { toast('Ошибка сохранения'); console.error(error); return; }
 
-    nameInp.value = '';
-    yearInp.value = '';
-    descInp.value = '';
+    nameInp.value  = '';
+    yearInp.value  = '';
+    descInp.value  = '';
+    phoneInp.value = '';
+    photoInp.value = '';
+    document.getElementById('hofPhotoPreview').hidden = true;
     await loadAll();
     renderHallOfFame();
     renderAdminHof();
     toast('Добавлен в Зал Славы');
+  }
+
+  function changeHofPhoto(index) {
+    if (!isAdmin) return;
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async ev => {
+        const members = getHofMembers();
+        if (!members[index]) return;
+        members[index].photo = ev.target.result;
+        const { error } = await db.from('settings')
+          .upsert({ key: 'hof_members', value: JSON.stringify(members) });
+        if (error) { toast('Ошибка загрузки фото'); console.error(error); return; }
+        await loadAll();
+        renderHallOfFame();
+        renderAdminHof();
+        toast('Фото обновлено');
+      };
+      reader.readAsDataURL(file);
+    };
+    inp.click();
   }
 
   async function removeFromHof(index) {
@@ -2197,8 +2262,9 @@
     exportTable:      exportTable,
     clearCustomTable: clearCustomTable,
     // Hall of Fame admin
-    addToHof:      addToHof,
-    removeFromHof: removeFromHof,
+    addToHof:       addToHof,
+    removeFromHof:  removeFromHof,
+    changeHofPhoto: changeHofPhoto,
     // Team page (separate full-screen view)
     openTeamPage:        openTeamPage,
     closeTeamPage:       closeTeamPage,
