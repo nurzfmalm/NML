@@ -1041,13 +1041,14 @@
       const clickHandler = hasStats ? `onclick="NML.togglePlayer(${p.id})"` : '';
       const clickCursor  = hasStats ? 'style="cursor:pointer"' : '';
 
-      return `<div class="player-item-wrap">
+      return `<div class="player-item-wrap" data-player-id="${p.id}">
         <div class="player-item ${isExpanded?'expanded':''}" ${clickHandler} ${clickCursor}>
           <span class="player-num">${p.number ? '#' + p.number : '—'}</span>
           <span class="player-name">${esc(p.name)}</span>
           <span class="player-stat-badge goal${gCls}">⚽ ${g}</span>
           ${assistBadge}
           ${chevron}
+          <button class="btn-rename-player" onclick="event.stopPropagation();NML.renamePlayer(${p.id})" title="Переименовать">✏</button>
           <button class="btn-remove-player" onclick="event.stopPropagation();NML.removePlayer(${p.id})" title="Удалить игрока">✕</button>
         </div>
         ${detailHTML}
@@ -1214,12 +1215,13 @@
       const a = assistMap[p.id] || 0;
       const gCls = g ? '' : ' zero';
       const assistBadge = a > 0 ? `<span class="player-stat-badge assist" title="Ассистов">👟 ${a}</span>` : '';
-      return `<div class="player-item-wrap">
+      return `<div class="player-item-wrap" data-player-id="${p.id}">
         <div class="player-item">
           <span class="player-num">${p.number ? '#' + p.number : '—'}</span>
           <span class="player-name">${esc(p.name)}</span>
           <span class="player-stat-badge goal${gCls}">⚽ ${g}</span>
           ${assistBadge}
+          ${isAdmin ? `<button class="btn-rename-player" onclick="NML.renamePlayer(${p.id})" title="Переименовать">✏</button>` : ''}
           ${isAdmin ? `<button class="btn-remove-player" onclick="NML.removePlayerPage(${p.id})" title="Удалить">✕</button>` : ''}
         </div>
       </div>`;
@@ -1288,15 +1290,13 @@
   function toggleAddPlayerPage() {
     const form = document.getElementById('tpAddPlayerForm');
     form.style.display = form.style.display === 'flex' ? 'none' : 'flex';
-    if (form.style.display === 'flex') document.getElementById('tpApLastName').focus();
+    if (form.style.display === 'flex') document.getElementById('tpApName').focus();
   }
 
   async function addPlayerPage() {
-    const num       = parseInt(document.getElementById('tpApNum').value) || null;
-    const lastName  = document.getElementById('tpApLastName').value.trim();
-    const firstName = document.getElementById('tpApFirstName').value.trim();
-    if (!lastName) { toast('Введите фамилию игрока'); return; }
-    const fullName = firstName ? `${lastName} ${firstName}` : lastName;
+    const num      = parseInt(document.getElementById('tpApNum').value) || null;
+    const fullName = document.getElementById('tpApName').value.trim();
+    if (!fullName) { toast('Введите имя игрока'); return; }
     const { error } = await db.from('players').insert([{
       team_id:    teamPageId,
       name:       fullName,
@@ -1304,9 +1304,8 @@
       sort_order: players.filter(p => p.team_id === teamPageId).length,
     }]);
     if (error) { toast('Ошибка добавления игрока'); console.error(error); return; }
-    document.getElementById('tpApNum').value = '';
-    document.getElementById('tpApLastName').value  = '';
-    document.getElementById('tpApFirstName').value = '';
+    document.getElementById('tpApNum').value  = '';
+    document.getElementById('tpApName').value = '';
     document.getElementById('tpAddPlayerForm').style.display = 'none';
     await loadAll();
     renderTeamPage();
@@ -1352,13 +1351,10 @@
 
   /* ── Add player: Фамилия + Имя + Номер (no rating) ── */
   async function addPlayer() {
-    const num       = parseInt(document.getElementById('apNum').value) || null;
-    const lastName  = document.getElementById('apLastName').value.trim();
-    const firstName = document.getElementById('apFirstName').value.trim();
+    const num      = parseInt(document.getElementById('apNum').value) || null;
+    const fullName = document.getElementById('apName').value.trim();
 
-    if (!lastName) { toast('Введите фамилию игрока'); return; }
-
-    const fullName  = firstName ? `${lastName} ${firstName}` : lastName;
+    if (!fullName) { toast('Введите имя игрока'); return; }
 
     const { error } = await db.from('players').insert([{
       team_id:    currentTeamId,
@@ -1368,12 +1364,47 @@
     }]);
     if (error) { toast('Ошибка добавления игрока'); console.error(error); return; }
 
-    document.getElementById('apNum').value = '';
-    document.getElementById('apLastName').value  = '';
-    document.getElementById('apFirstName').value = '';
+    document.getElementById('apNum').value  = '';
+    document.getElementById('apName').value = '';
     await loadAll();
     renderTeamModal();
     toast('Игрок добавлен');
+  }
+
+  function renamePlayer(playerId) {
+    const wrap = document.querySelector(`.player-item-wrap[data-player-id="${playerId}"]`);
+    if (!wrap) return;
+    const nameEl = wrap.querySelector('.player-name');
+    if (!nameEl) return;
+
+    const origName = nameEl.textContent;
+    const inp = document.createElement('input');
+    inp.className = 'player-name-input';
+    inp.value     = origName;
+    inp.maxLength = 80;
+
+    let done = false;
+    const save = async () => {
+      if (done) return; done = true;
+      const newName = inp.value.trim();
+      if (!newName || newName === origName) { restore(); return; }
+      const { error } = await db.from('players').update({ name: newName }).eq('id', playerId);
+      if (error) { toast('Ошибка сохранения'); restore(); return; }
+      await loadAll();
+      if (currentTeamId) renderTeamModal();
+      if (teamPageId)    renderTeamPage();
+      toast('Имя обновлено');
+    };
+    const restore = () => { nameEl.style.display = ''; inp.remove(); };
+
+    nameEl.style.display = 'none';
+    nameEl.after(inp);
+    inp.focus(); inp.select();
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  { e.preventDefault(); save(); }
+      if (e.key === 'Escape') { e.preventDefault(); done = true; restore(); }
+    });
+    inp.addEventListener('blur', save);
   }
 
   async function removePlayer(playerId) {
@@ -1389,7 +1420,7 @@
   function toggleAddPlayerForm() {
     const form = document.getElementById('addPlayerForm');
     form.classList.toggle('visible');
-    if (form.classList.contains('visible')) document.getElementById('apLastName').focus();
+    if (form.classList.contains('visible')) document.getElementById('apName').focus();
   }
 
   /* =========================================================
@@ -2281,6 +2312,7 @@
     togglePlayer:     togglePlayerExpand,
     toggleAddPlayer:  toggleAddPlayerForm,
     addPlayer:        addPlayer,
+    renamePlayer:     renamePlayer,
     removePlayer:     removePlayer,
     promptLogoUpload: promptLogoUpload,
     // Match modal
