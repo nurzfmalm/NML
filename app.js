@@ -23,6 +23,9 @@
   let isAdmin     = sessionStorage.getItem('nml_admin') === '1';
   let customTable = null;
 
+  let teamMap = {};
+  let goalMap = {};
+
   let currentTeamId  = null;
   let currentTeamTab = 'roster'; // 'roster' | 'matches'
   let expandedPlayerId = null;
@@ -40,6 +43,9 @@
   let playerFilter = '';
   let playerSort   = 'goals'; // 'goals'|'assists'|'ga'
   let playerSearch = '';
+
+  let matchFilterPlayed = true;
+  let matchFilterUnplayed = true;
 
   /* =========================================================
      BOOTSTRAP
@@ -65,36 +71,55 @@
   /* =========================================================
      DATA
      ========================================================= */
-  async function loadAll() {
-    const [tRes, mRes, sRes] = await Promise.all([
-      db.from('teams').select('*').order('sort_order'),
-      db.from('matches').select('*').order('id'),
-      db.from('settings').select('*'),
-    ]);
-    if (tRes.error || mRes.error || sRes.error) {
-      console.error('Load error', tRes.error, mRes.error, sRes.error);
-      toast('Ошибка загрузки данных');
-      return;
-    }
-    teams   = tRes.data || [];
-    matches = mRes.data || [];
-    settings = {};
-    (sRes.data || []).forEach(r => { settings[r.key] = r.value; });
+async function loadAll() {
+  console.time('teams');
+  // Исправлено: все колонки в одной строке 'id, name, sort_order, logo'
+  const tRes = await db.from('teams')
+    .select('id, name, sort_order, logo') 
+    .order('sort_order');
+  console.timeEnd('teams');
 
-    players = await db.from('players').select('*').order('sort_order').order('id')
-      .then(r => r.error ? [] : (r.data || [])).catch(() => []);
+  console.time('matches');
+  const mRes = await db.from('matches')
+    .select('id, match_type, round, match_date, home_id, away_id, home_goals, away_goals, played, is_technical')
+    .order('id');
+  console.timeEnd('matches');
 
-    goals = await db.from('goals').select('*').order('id')
-      .then(r => r.error ? [] : (r.data || [])).catch(() => []);
+  console.time('players');
+  // Исправлено: добавлены photo и number в общую строку
+  const pRes = await db.from('players')
+    .select('id, name, team_id, sort_order, number, photo')
+    .order('sort_order')
+    .order('id');
+  console.timeEnd('players');
 
-    if (settings.custom_table) {
-      try { customTable = JSON.parse(settings.custom_table); } catch { customTable = null; }
-    } else {
-      customTable = null;
-    }
+  console.time('goals');
+  const gRes = await db.from('goals')
+    .select('id, match_id, player_id')
+    .order('id');
+  console.timeEnd('goals');
 
-    render();
+  console.time('settings');
+  const sRes = await db.from('settings').select('key, value');
+  console.timeEnd('settings');
+
+  if (tRes.error || mRes.error || pRes.error || gRes.error || sRes.error) {
+    console.error('Load error', tRes.error, mRes.error, pRes.error, gRes.error, sRes.error);
+    return;
   }
+
+  teams = tRes.data || [];
+  matches = mRes.data || [];
+  players = pRes.data || [];
+  goals = gRes.data || [];
+
+  settings = {};
+  (sRes.data || []).forEach(r => {
+    settings[r.key] = r.value;
+  });
+
+  render();
+}
 
   /* =========================================================
      REALTIME
@@ -124,6 +149,17 @@
      RENDER
      ========================================================= */
   function render() {
+
+      teamMap = {};
+      teams.forEach(t => {
+        teamMap[t.id] = t;
+      });
+    
+      goalMap = {};
+      goals.forEach(g => {
+        goalMap[g.match_id] = (goalMap[g.match_id] || 0) + 1;
+      });
+    
     renderStats();
     renderTable();
     renderMatches();
@@ -221,65 +257,102 @@
   }
 
   /* ---------- Matches tab ---------- */
-  function renderMatches() {
-    const el    = document.getElementById('matchdays');
-    const group = matches.filter(m => m.match_type === 'group');
-    if (!group.length) {
-      const hint = isAdmin
-        ? '<small>Перейдите в «Управление» и сгенерируйте жеребьёвку</small>'
-        : '<small>Расписание скоро появится</small>';
-      el.innerHTML = '<div class="no-schedule"><p>Расписание ещё не создано</p>' + hint + '</div>';
-      return;
-    }
-    const rounds = {};
-    group.forEach(m => {
-      const key = m.round != null ? m.round : 'unassigned';
-      (rounds[key] = rounds[key] || []).push(m);
+function renderMatches() {
+  const el = document.getElementById('matchdays');
+  const group = matches.filter(m => m.match_type === 'group');
+
+  if (!group.length) {
+    el.innerHTML = '<div class="no-schedule"><p>Нет матчей</p></div>';
+    return;
+  }
+
+  const rounds = {};
+  group.forEach(m => {
+    const key = m.round != null ? m.round : 'unassigned';
+    (rounds[key] = rounds[key] || []).push(m);
+  });
+
+  const roundKeys = Object.keys(rounds)
+    .filter(k => k !== 'unassigned')
+    .sort((a, b) => a - b);
+
+  // Добавляем матчи без тура в конец
+  if (rounds['unassigned']) roundKeys.push('unassigned');
+
+  const html = roundKeys.map(r => {
+    const list = rounds[r];
+    const sorted = list.sort((a, b) => {
+      if (a.played !== b.played) return a.played ? -1 : 1;
+      return a.id - b.id;
     });
-    const roundKeys = Object.keys(rounds)
-      .filter(k => k !== 'unassigned')
-      .sort((a,b) => a - b);
-    if (roundKeys.length === 0) {
-      // No rounds assigned yet — show all matches in a flat list
-      const allPlayed = group.filter(m => m.played).length;
-      el.innerHTML = `<div class="matchday">
-        <div class="matchday-header"><span>Все матчи</span> — ${allPlayed}/${group.length} сыграно</div>
-        <div class="match-grid">${group.map(m => matchCardHTML(m)).join('')}</div></div>`;
-      return;
-    }
-    el.innerHTML = roundKeys.map(r => {
-      const list   = rounds[r];
-      const played = list.filter(m => m.played).length;
-      const dated  = list.find(m => m.match_date);
-      const dateStr = dated ? ` <span class="matchday-date">${formatDate(dated.match_date)}</span>` : '';
-      return `<div class="matchday">
-        <div class="matchday-header"><span>Тур ${r}</span>${dateStr} — ${played}/${list.length} сыграно</div>
-        <div class="match-grid">${list.map(m => matchCardHTML(m)).join('')}</div></div>`;
-    }).join('');
-  }
+    const label = r === 'unassigned' ? '—' : r;
+    return `
+      <div class="matchday">
+        <div class="matchday-header">Тур ${label}</div>
+        <div class="match-grid">
+          ${sorted.map(m => matchCardHTML(m)).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
 
-  function matchCardHTML(m) {
-    const hName  = tName(m.home_id), aName = tName(m.away_id);
-    const score  = m.played ? `${m.home_goals} : ${m.away_goals}` : '— : —';
-    const pCls   = m.played ? (m.is_technical ? ' played tp' : ' played') : '';
-    const hW     = m.played && m.home_goals > m.away_goals ? ' match-winner' : '';
-    const aW     = m.played && m.away_goals > m.home_goals ? ' match-winner' : '';
-    const hLogo  = teamLogoHTML(m.home_id);
-    const aLogo  = teamLogoHTML(m.away_id);
-    const gCount = goals.filter(g => g.match_id === m.id).length;
-    const gTag   = (m.played && gCount > 0 && !m.is_technical) ? `<span class="match-goal-count">⚽ ${gCount}</span>` : '';
-    const tpTag  = m.is_technical ? `<span class="match-tp-badge">ТП</span>` : '';
+  el.innerHTML = html;
+}
 
-    // Clickable for admin always; for non-admin only if match is played
-    const clickable = isAdmin || m.played;
-    const cursor    = clickable ? '' : 'style="cursor:default"';
-    const onclick   = clickable ? `onclick="NML.open(${m.id})"` : '';
+function matchCardHTML(m) {
+  const home = teamMap[m.home_id];
+  const away = teamMap[m.away_id];
 
-    return `<div class="match-card${pCls}" ${onclick} ${cursor}>
-      <span class="match-home${hW}">${hLogo}${esc(hName)}</span>
-      <span class="match-score">${score}${tpTag}${gTag}</span>
-      <span class="match-away${aW}">${esc(aName)}${aLogo}</span></div>`;
-  }
+  const homeLogo = teamLogoHTML(m.home_id, 'match-card-logo', 'logo-ph');
+  const awayLogo = teamLogoHTML(m.away_id, 'match-card-logo', 'logo-ph');
+
+  const hName = home ? home.name : '—';
+  const aName = away ? away.name : '—';
+
+  const score = m.played
+    ? `${m.home_goals} : ${m.away_goals}`
+    : '— : —';
+
+  const pCls = m.played
+    ? (m.is_technical ? ' played tp' : ' played')
+    : '';
+
+  const hW = m.played && m.home_goals > m.away_goals ? ' match-winner' : '';
+  const aW = m.played && m.away_goals > m.home_goals ? ' match-winner' : '';
+
+  const gCount = goalMap[m.id] || 0;
+
+  const gTag = (m.played && gCount > 0 && !m.is_technical)
+    ? `<span class="match-goal-count">⚽ ${gCount}</span>`
+    : '';
+
+  const tpTag = m.is_technical
+    ? `<span class="match-tp-badge">ТП</span>`
+    : '';
+
+  const clickable = isAdmin || m.played;
+  const cursor = clickable ? '' : 'style="cursor:default"';
+  const onclick = clickable ? `onclick="NML.open(${m.id})"` : '';
+
+  return `
+    <div class="match-card${pCls}" ${onclick} ${cursor}>
+      <div class="match-team-info home-side">
+        ${homeLogo}
+        <span class="match-home${hW}">${esc(hName)}</span>
+      </div>
+      
+      <div class="match-score-block">
+        <span class="match-score">${score}</span>
+        ${tpTag} ${gTag}
+      </div>
+
+      <div class="match-team-info away-side">
+        <span class="match-away${aW}">${esc(aName)}</span>
+        ${awayLogo}
+      </div>
+    </div>
+  `;
+}
 
   /* ---------- Players Tab ---------- */
   function fillTeamFilter() {
@@ -481,21 +554,12 @@
             const photoEl = m.photo
               ? `<img src="${esc(m.photo)}" class="hof-portrait" alt="${esc(m.name)}">`
               : `<div class="hof-portrait-ph">${initials}</div>`;
-            const phoneSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="26" height="26"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.06 1h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 21 16l.92.92z"/></svg>`;
-            const callBtn = m.phone
-              ? `<a href="tel:${esc(m.phone)}" class="hof-call-btn">${phoneSvg}</a>`
-              : `<button class="hof-call-btn hof-call-btn--deco">${phoneSvg}</button>`;
             return `<div class="hof-entry">
-              ${photoEl}
-              <div class="hof-entry-ornament">⸻ ✦ ⸻</div>
-              <div class="hof-entry-name">${esc(m.name)}</div>
-              ${m.description ? `<div class="hof-entry-desc">&ldquo;${esc(m.description)}&rdquo;</div>` : ''}
-              <div class="hof-call-label">Входящий звонок...</div>
-              <div class="hof-call-btns">
-                ${callBtn}
-                ${callBtn}
-              </div>
-            </div>`;
+  ${photoEl}
+  <div class="hof-entry-ornament">⸻ ✦ ⸻</div>
+  <div class="hof-entry-name">${esc(m.name)}</div>
+  ${m.description ? `<div class="hof-entry-desc">&ldquo;${esc(m.description)}&rdquo;</div>` : ''}
+</div>`;
           }).join('')}
         </div>
       </div>`
@@ -2158,6 +2222,7 @@
     document.getElementById('codeBox').hidden = true;
     document.getElementById('adminCode').value = '';
     applyAdminMode();
+    render();
     toast('Админ-режим активирован');
     document.querySelector('.nav-btn[data-tab="admin"]').click();
   }
@@ -2166,6 +2231,7 @@
     isAdmin = false;
     sessionStorage.removeItem('nml_admin');
     applyAdminMode();
+    render();
     document.querySelector('.nav-btn[data-tab="table"]').click();
     toast('Вы вышли из админ-режима');
   }
@@ -2329,6 +2395,11 @@
     filterPlayers:    (v) => { playerFilter = v || ''; renderPlayersTab(); },
     setSort:          (s) => setPlayerSort(s),
     searchPlayers:    (q) => { playerSearch = (q||'').trim(); renderPlayersTab(); },
+    toggleMatchFilter: (type, checked) => {
+    if (type === 'played') matchFilterPlayed = checked;
+    if (type === 'unplayed') matchFilterUnplayed = checked;
+    renderMatches();
+  },
   };
 
 })();

@@ -1,4 +1,30 @@
 /* ===== CSS Variables ===== */
+.matches-filters {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.04);
+}
+
+.matches-filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .9rem;
+  color: rgba(255,255,255,.85);
+  cursor: pointer;
+  user-select: none;
+}
+
+.matches-filter-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent,#f5c400);
+}
 :root {
   /* Backgrounds — dark navy palette */
   --bg:          #0b0e1a;
@@ -831,32 +857,7 @@ input, select, textarea { font-family: inherit; }
   quotes: '\201C' '\201D';
 }
 
-.hof-call-label {
-  font-size: .8rem; letter-spacing: .12em;
-  color: rgba(255,255,255,.4); margin-top: 16px;
-}
-.hof-call-btns { display: flex; gap: 32px; margin-top: 4px; }
-.hof-call-btn {
-  width: 64px; height: 64px;
-  border-radius: 50%; background: #34c85a;
-  border: none;
-  display: flex; align-items: center; justify-content: center;
-  color: #fff; cursor: pointer; text-decoration: none;
-  box-shadow: 0 4px 24px rgba(52,200,90,.45);
-  transition: transform .12s, box-shadow .12s;
-  animation: hof-ring 2s ease-in-out infinite;
-}
-.hof-call-btn:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 32px rgba(52,200,90,.65);
-}
-.hof-call-btn--deco { cursor: default; }
-.hof-call-btn--deco:hover { transform: none; box-shadow: 0 4px 24px rgba(52,200,90,.45); }
-@keyframes hof-ring {
-  0%, 100% { transform: scale(1); }
-  50%       { transform: scale(1.06); }
-}
-.hof-call-btn:nth-child(2) { animation-delay: .3s; }
+
 
 /* HoF admin */
 .hof-admin-form { display: flex; flex-direction: column; gap: 8px; }
