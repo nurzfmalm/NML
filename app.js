@@ -76,14 +76,12 @@ async function loadAll() {
   // Исправлено: все колонки в одной строке 'id, name, sort_order, logo'
   const tRes = await db.from('teams')
     .select('id, name, sort_order, logo') 
-    .limit(10)
     .order('sort_order');
   console.timeEnd('teams');
 
   console.time('matches');
   const mRes = await db.from('matches')
     .select('id, match_type, round, match_date, home_id, away_id, home_goals, away_goals, played, is_technical')
-    .limit(10)
     .order('id');
   console.timeEnd('matches');
 
@@ -91,7 +89,6 @@ async function loadAll() {
   // Исправлено: добавлены photo и number в общую строку
   const pRes = await db.from('players')
     .select('id, name, team_id, sort_order, number, photo')
-    .limit(10)
     .order('sort_order')
     .order('id');
   console.timeEnd('players');
@@ -99,7 +96,6 @@ async function loadAll() {
   console.time('goals');
   const gRes = await db.from('goals')
     .select('id, match_id, player_id')
-    .limit(10)
     .order('id');
   console.timeEnd('goals');
 
